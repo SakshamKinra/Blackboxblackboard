@@ -1,0 +1,231 @@
+
+<style>
+  .bb-wrap { border-radius: 16px; padding: 0; overflow: hidden; font-family: var(--font-sans); transition: background 0.4s; }
+  .bb-wrap.dark { background: #0d0d1a; }
+  .bb-wrap.light { background: #fdf6ee; }
+
+  .bb-nav { border-bottom: 0.5px solid #C9A84C33; padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; transition: background 0.4s; }
+  .dark .bb-nav { background: #0d0d1a; }
+  .light .bb-nav { background: #fdf6ee; }
+
+  .bb-logo { color: #C9A84C; font-size: 18px; font-weight: 500; letter-spacing: 1px; }
+  .bb-nav-links { display: flex; gap: 24px; align-items: center; }
+  .bb-nav-link { font-size: 13px; cursor: pointer; transition: color 0.4s; }
+  .dark .bb-nav-link { color: #a89bc2; }
+  .light .bb-nav-link { color: #7a6a5a; }
+
+  .bb-nav-btn { background: #C9A84C; color: #0d0d1a; border: none; border-radius: 20px; padding: 7px 18px; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+  .theme-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; background: transparent; border: 0.5px solid #C9A84C55; border-radius: 20px; padding: 5px 12px; }
+  .toggle-icon { font-size: 14px; }
+  .toggle-label { font-size: 12px; color: #C9A84C; }
+
+  .bb-hero { padding: 56px 28px 36px; text-align: center; }
+  .bb-eyebrow { color: #C9A84C; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
+  .bb-title { font-size: 30px; font-weight: 500; line-height: 1.3; margin-bottom: 12px; transition: color 0.4s; }
+  .dark .bb-title { color: #f5ecd7; }
+  .light .bb-title { color: #2a1f0e; }
+  .bb-title span { color: #C9A84C; }
+  .bb-sub { font-size: 14px; line-height: 1.7; max-width: 420px; margin: 0 auto 32px; transition: color 0.4s; }
+  .dark .bb-sub { color: #8878a8; }
+  .light .bb-sub { color: #8a7060; }
+
+  .bb-cta { background: #C9A84C; color: #0d0d1a; border: none; border-radius: 24px; padding: 12px 32px; font-size: 14px; font-weight: 500; cursor: pointer; margin-right: 12px; }
+  .bb-cta2 { background: transparent; color: #C9A84C; border: 0.5px solid #C9A84C66; border-radius: 24px; padding: 12px 28px; font-size: 14px; cursor: pointer; }
+
+  .bb-cards { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; padding: 0 28px 28px; }
+  .bb-card { border: 0.5px solid #C9A84C22; border-radius: 12px; padding: 20px; transition: background 0.4s; }
+  .dark .bb-card { background: #13132b; }
+  .light .bb-card { background: #fff8f0; }
+
+  .bb-card-icon { width: 32px; height: 32px; border-radius: 50%; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; }
+  .bb-card-icon.gold { background: #C9A84C22; }
+  .bb-card-icon.pink { background: #F4C0D122; }
+  .bb-card-icon.lav { background: #CECBF622; }
+  .bb-card-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .bb-card-dot.gold { background: #C9A84C; }
+  .bb-card-dot.pink { background: #ED93B1; }
+  .bb-card-dot.lav { background: #AFA9EC; }
+  .bb-card-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; transition: color 0.4s; }
+  .dark .bb-card-title { color: #f5ecd7; }
+  .light .bb-card-title { color: #2a1f0e; }
+  .bb-card-desc { font-size: 12px; line-height: 1.6; transition: color 0.4s; }
+  .dark .bb-card-desc { color: #6a5f88; }
+  .light .bb-card-desc { color: #9a8878; }
+
+  .bb-divider { height: 0.5px; background: #C9A84C22; margin: 0 28px; }
+
+  .bb-lock { padding: 24px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; transition: background 0.4s; }
+  .dark .bb-lock { background: #0d0d1a; }
+  .light .bb-lock { background: #fdf6ee; }
+
+  .bb-lock-card { border: 0.5px solid #C9A84C33; border-radius: 12px; padding: 20px; transition: background 0.4s; }
+  .dark .bb-lock-card { background: #13132b; }
+  .light .bb-lock-card { background: #fff8f0; }
+
+  .bb-lock-label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; transition: color 0.4s; }
+  .dark .bb-lock-label { color: #6a5f88; }
+  .light .bb-lock-label { color: #b09880; }
+
+  .bb-lock-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; transition: color 0.4s; }
+  .dark .bb-lock-title { color: #f5ecd7; }
+  .light .bb-lock-title { color: #2a1f0e; }
+
+  .bb-lock-sub { font-size: 12px; transition: color 0.4s; }
+  .dark .bb-lock-sub { color: #8878a8; }
+  .light .bb-lock-sub { color: #9a8878; }
+
+  .bb-countdown { display: flex; gap: 8px; margin-top: 14px; }
+  .bb-count-box { border: 0.5px solid #C9A84C44; border-radius: 8px; padding: 8px 12px; text-align: center; flex: 1; transition: background 0.4s; }
+  .dark .bb-count-box { background: #0d0d1a; }
+  .light .bb-count-box { background: #fdf6ee; }
+  .bb-count-num { color: #C9A84C; font-size: 18px; font-weight: 500; }
+  .bb-count-lbl { font-size: 10px; transition: color 0.4s; }
+  .dark .bb-count-lbl { color: #6a5f88; }
+  .light .bb-count-lbl { color: #b09880; }
+
+  .bb-blurred { border: 0.5px solid #C9A84C22; border-radius: 8px; padding: 12px; margin-top: 12px; transition: background 0.4s; }
+  .dark .bb-blurred { background: #0d0d1a; }
+  .light .bb-blurred { background: #fdf6ee; }
+  .bb-blur-text { font-size: 12px; filter: blur(3px); user-select: none; line-height: 1.8; transition: color 0.4s; }
+  .dark .bb-blur-text { color: #2a2a4a; }
+  .light .bb-blur-text { color: #c8b8a8; }
+
+  .bb-lock-badge { display: inline-block; background: #ED93B122; color: #ED93B1; border-radius: 12px; padding: 3px 10px; font-size: 11px; margin-bottom: 12px; }
+  .bb-gold-badge { display: inline-block; background: #C9A84C22; color: #C9A84C; border-radius: 12px; padding: 3px 10px; font-size: 11px; margin-bottom: 12px; }
+  .bb-live { color: #1D9E75; font-size: 11px; display: flex; align-items: center; margin-bottom: 8px; gap: 5px; }
+  .bb-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #1D9E75; }
+  .bb-textarea { border: 0.5px solid #C9A84C33; border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.8; margin-top: 10px; transition: background 0.4s, color 0.4s; }
+  .dark .bb-textarea { background: #0d0d1a; color: #f5ecd7; }
+  .light .bb-textarea { background: #fdf6ee; color: #2a1f0e; }
+  .bb-cursor { display: inline-block; width: 2px; height: 13px; background: #C9A84C; vertical-align: middle; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+
+<div class="bb-wrap dark" id="bbwrap">
+  <div class="bb-nav">
+    <div class="bb-logo">BlackBoard</div>
+    <div class="bb-nav-links">
+      <span class="bb-nav-link">How it works</span>
+      <span class="bb-nav-link">Examples</span>
+      <button class="theme-toggle" onclick="toggleTheme()">
+        <span class="toggle-icon" id="toggle-icon">☀️</span>
+        <span class="toggle-label" id="toggle-label">Light mode</span>
+      </button>
+    </div>
+    <button class="bb-nav-btn">Create board</button>
+  </div>
+
+  <div class="bb-hero">
+    <div class="bb-eyebrow">Your message, your moment</div>
+    <div class="bb-title">Lock your message.<br><span>Unlock the moment.</span></div>
+    <div class="bb-sub">Share boards that reveal themselves only when the time is right — or when the right person arrives.</div>
+    <button class="bb-cta">Create a board</button>
+    <button class="bb-cta2">See how it works</button>
+  </div>
+
+  <div class="bb-cards">
+    <div class="bb-card">
+      <div class="bb-card-icon gold"><div class="bb-card-dot gold"></div></div>
+      <div class="bb-card-title">Date lock</div>
+      <div class="bb-card-desc">Reveal your board on a birthday, anniversary, or any special moment.</div>
+    </div>
+    <div class="bb-card">
+      <div class="bb-card-icon pink"><div class="bb-card-dot pink"></div></div>
+      <div class="bb-card-title">Password lock</div>
+      <div class="bb-card-desc">Only the ones who know the secret can step inside your board.</div>
+    </div>
+    <div class="bb-card">
+      <div class="bb-card-icon lav"><div class="bb-card-dot lav"></div></div>
+      <div class="bb-card-title">Live collab</div>
+      <div class="bb-card-desc">Once unlocked, everyone edits together in real time.</div>
+    </div>
+  </div>
+
+  <div class="bb-divider"></div>
+
+  <div class="bb-lock">
+    <div class="bb-lock-card">
+      <div class="bb-lock-label">Locked board</div>
+      <div class="bb-lock-badge">Unlocks on your birthday</div>
+      <div class="bb-lock-title">A message from your best friend</div>
+      <div class="bb-lock-sub">Opens in...</div>
+      <div class="bb-countdown">
+        <div class="bb-count-box"><div class="bb-count-num" id="bb-days">02</div><div class="bb-count-lbl">days</div></div>
+        <div class="bb-count-box"><div class="bb-count-num" id="bb-hours">14</div><div class="bb-count-lbl">hrs</div></div>
+        <div class="bb-count-box"><div class="bb-count-num" id="bb-minutes">37</div><div class="bb-count-lbl">min</div></div>
+        <div class="bb-count-box"><div class="bb-count-num" id="bb-seconds">09</div><div class="bb-count-lbl">sec</div></div>
+      </div>
+      <div class="bb-blurred">
+        <div class="bb-blur-text">Happy birthday! I've been wanting to tell you how much you mean to me ever since we met in first year...</div>
+      </div>
+    </div>
+    <div class="bb-lock-card">
+      <div class="bb-lock-label">Unlocked board</div>
+      <div class="bb-gold-badge">Live — 3 people editing</div>
+      <div class="bb-live"><span class="bb-live-dot"></span> Real-time collaboration active</div>
+      <div class="bb-lock-title">Our trip planning board</div>
+      <div class="bb-textarea">
+        Goa trip — December 2025<br>
+        Hotels: Taj or Novotel<br>
+        Must visit: Dudhsagar falls<br>
+        Budget per person: ₹15,000<span class="bb-cursor"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleTheme() {
+  const wrap = document.getElementById('bbwrap');
+  const icon = document.getElementById('toggle-icon');
+  const label = document.getElementById('toggle-label');
+  const isLight = wrap.classList.contains('light');
+  wrap.classList.toggle('dark', isLight);
+  wrap.classList.toggle('light', !isLight);
+  icon.textContent = isLight ? '☀️' : '🌙';
+  label.textContent = isLight ? 'Light mode' : 'Dark mode';
+}
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function startLockedBoardCountdown(unlockAt) {
+  const daysEl = document.getElementById('bb-days');
+  const hoursEl = document.getElementById('bb-hours');
+  const minutesEl = document.getElementById('bb-minutes');
+  const secondsEl = document.getElementById('bb-seconds');
+
+  if (!daysEl || !hoursEl || !minutesEl || !secondsEl) return;
+
+  let timer = null;
+
+  const tick = () => {
+    const ms = unlockAt.getTime() - Date.now();
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    daysEl.textContent = pad2(days);
+    hoursEl.textContent = pad2(hours);
+    minutesEl.textContent = pad2(minutes);
+    secondsEl.textContent = pad2(seconds);
+
+    if (totalSeconds <= 0) {
+      if (timer) clearInterval(timer);
+    }
+  };
+
+  timer = setInterval(tick, 1000);
+  tick();
+}
+
+(function initLockedBoardDemo() {
+  const unlockAt = new Date(Date.now() + (2 * 24 * 60 * 60 + 14 * 60 * 60 + 37 * 60 + 9) * 1000);
+  startLockedBoardCountdown(unlockAt);
+})();
+</script>
