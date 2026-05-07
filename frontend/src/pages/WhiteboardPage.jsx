@@ -33,12 +33,23 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const [strokes, setStrokes] = useState([]);
 
   const [copied, setCopied] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [joined, setJoined] = useState(false);
 
   const lastPos = useRef({ x: 0, y: 0 });
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000'];
 
+  useEffect(() => {
+    const savedName = sessionStorage.getItem(`wb-name:${id}`) || '';
+    if (savedName.trim()) {
+      setDisplayName(savedName);
+      setJoined(true);
+    }
+  }, [id]);
+
   // Fetch initial data & setup socket
   useEffect(() => {
+    if (!joined || !displayName.trim()) return undefined;
     let newSocket;
 
     async function init() {
@@ -54,7 +65,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           setSocket(newSocket);
 
           newSocket.on('connect', () => {
-            newSocket.emit('join_whiteboard', { whiteboardId: id });
+            newSocket.emit('join_whiteboard', { whiteboardId: id, userName: displayName.trim() });
           });
 
           newSocket.on('wb_user_joined', () => setUserCount(c => c + 1));
@@ -86,7 +97,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     return () => {
       if (newSocket) newSocket.disconnect();
     };
-  }, [id]);
+  }, [id, joined, displayName]);
 
   // Setup Canvas
   useEffect(() => {
@@ -264,7 +275,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     reader.onload = (event) => {
       const base64 = event.target.result;
       const imgData = {
-        src: base64, x: 50, y: 50, width: 200, height: 200, id: Date.now()
+        src: base64, x: 50, y: 50, width: 200, height: 200, id: Date.now().toString(), userName: displayName.trim()
       };
       setImages(prev => [...prev, imgData]);
       if (socket && socket.connected) socket.emit('wb_image_added', { whiteboardId: id, image: imgData });
@@ -326,6 +337,35 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (!joined) {
+    return (
+      <div className="bb-bg min-h-screen flex items-center justify-center p-6">
+        <div className="bb-card p-6 rounded-xl w-full max-w-sm">
+          <h2 className="text-xl font-bold bb-text mb-2">Join Whiteboard</h2>
+          <p className="bb-muted text-sm mb-4">Enter your name to collaborate.</p>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Your display name"
+            className="bb-input w-full mb-4"
+            maxLength={30}
+          />
+          <button
+            className="btn-gold w-full"
+            onClick={() => {
+              if (!displayName.trim()) return;
+              sessionStorage.setItem(`wb-name:${id}`, displayName.trim());
+              setJoined(true);
+            }}
+          >
+            Enter Whiteboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

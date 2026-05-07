@@ -9,6 +9,7 @@ const { nanoid } = require('nanoid');
 const fs = require('fs');
 const path = require('path');
 const Board = require('../models/Board');
+const { uploadsDir } = require('../middleware/upload');
 
 // Utility to delete images from disk
 const deleteImages = (imagesArray) => {
@@ -17,7 +18,7 @@ const deleteImages = (imagesArray) => {
     try {
       const fileName = imageUrl.split('/uploads/')[1];
       if (fileName) {
-        const filePath = path.join(__dirname, '..', 'uploads', fileName);
+        const filePath = path.join(uploadsDir, fileName);
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
@@ -117,6 +118,20 @@ const createBoard = async (req, res, next) => {
       console.log(`[Storage Guard] Cleaned ${deletedOldCount} old boards`);
     }
 
+    // ── Seed Whiteboard Data with Attached Images ──────────────
+    // If images were attached during creation, we place them on the
+    // whiteboard layer immediately so they are interactive.
+    const seededWhiteboardImages = attachedImages.map((src, index) => ({
+      id: `attached-${Date.now()}-${index}`,
+      type: 'image',
+      src: src,
+      x: 50 + (index * 40),
+      y: 50 + (index * 40),
+      width: 300,
+      height: 200,
+      userName: 'System'
+    }));
+
     // Persist the board document in MongoDB.
     const board = await Board.create({
       boardId,
@@ -127,6 +142,7 @@ const createBoard = async (req, res, next) => {
       passwordHash,
       expiresAfter: validExpiresAfter,
       attachedImages,
+      whiteboardData: seededWhiteboardImages,
     });
 
     // Build a shareable link using the CLIENT_URL from environment.

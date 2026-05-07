@@ -1,9 +1,29 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+
+// Use path.resolve to ensure we have an absolute path regardless of where the process started.
+const uploadsDir = path.resolve(__dirname, '..', 'uploads');
+
+const ensureUploadsDir = () => {
+  try {
+    if (!fs.existsSync(uploadsDir)) {
+      console.log(`[Uploads] Creating directory at: ${uploadsDir}`);
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+  } catch (err) {
+    console.error(`[Uploads] Failed to create directory: ${err.message}`);
+  }
+};
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '..', 'uploads'));
+    try {
+      ensureUploadsDir();
+      cb(null, uploadsDir);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
@@ -28,3 +48,5 @@ const upload = multer({
 });
 
 module.exports = upload;
+module.exports.ensureUploadsDir = ensureUploadsDir;
+module.exports.uploadsDir = uploadsDir;

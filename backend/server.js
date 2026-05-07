@@ -12,6 +12,21 @@ const http = require('http');                 // Node's built-in HTTP module
 const { Server } = require('socket.io');      // Socket.io v4 named export
 const mongoose = require('mongoose');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+
+// ── Rate Limiting ───────────────────────────────────────────
+// Brute-force protection for sensitive endpoints.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per windowMs
+  message: { success: false, message: 'Too many attempts, please try again after 15 minutes.' }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // Limit each IP to 60 requests per minute
+  message: { success: false, message: 'Too many requests, please slow down.' }
+});
 
 // Internal modules
 const boardRoutes  = require('./routes/boardRoutes');
@@ -22,6 +37,7 @@ const errorHandler = require('./middleware/errorHandler');
 const Board = require('./models/Board');
 const path = require('path');
 const fs = require('fs');
+const { ensureUploadsDir, uploadsDir } = require('./middleware/upload');
 
 // ── Express app & raw HTTP server ───────────────────────────
 // Socket.io needs the raw http.Server instance, not the Express
@@ -56,12 +72,39 @@ app.options('*', cors(corsOptions));
 const io = new Server(httpServer, {
   cors: corsOptions,
 });
+const boardParticipants = new Map();
+const whiteboardParticipants = new Map();
+
+const normalizeName = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const upsertParticipant = (store, roomId, socketId, name) => {
+  if (!store.has(roomId)) store.set(roomId, new Map());
+  store.get(roomId).set(socketId, name);
+};
+
+const removeParticipant = (store, roomId, socketId) => {
+  if (!roomId || !store.has(roomId)) return null;
+  const room = store.get(roomId);
+  const name = room.get(socketId) || null;
+  room.delete(socketId);
+  if (room.size === 0) store.delete(roomId);
+  return name;
+};
+
+const participantsList = (store, roomId) => {
+  if (!roomId || !store.has(roomId)) return [];
+  return Array.from(store.get(roomId).values());
+};
 
 // ── Body parsing ─────────────────────────────────────────────
 // Parse incoming JSON request bodies (required for POST routes).
 app.use(express.json());
 // Parse URL-encoded bodies (e.g., from HTML forms).
 app.use(express.urlencoded({ extended: true }));
+
+// Ensure uploads directory exists on boot in all environments.
+console.log(`[Startup] Uploads directory set to: ${uploadsDir}`);
+ensureUploadsDir();
 
 // ── Health-check route ───────────────────────────────────────
 // A simple GET / endpoint to confirm the server is alive.
@@ -70,9 +113,13 @@ app.get('/', (req, res) => {
 });
 
 // ── Static file serving for uploads ─────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
 // ── API Routes ───────────────────────────────────────────────
+app.use('/api', apiLimiter);
+app.use('/api/boards/:id/unlock', authLimiter);
+app.use('/api/admin/login', authLimiter);
+
 // All board-related REST endpoints are mounted under /api/boards.
 app.use('/api/boards', boardRoutes);
 
@@ -100,21 +147,31 @@ app.use(errorHandler);
 // Only clients that have successfully unlocked a board will
 // join that room (enforced by the frontend after /unlock call).
 io.on('connection', (socket) => {
-  console.log(`[Socket.io] Client connected: ${socket.id}`);
+  // console.log(`[Socket.io] Client connected: ${socket.id}`);
 
   // ── Event: join_board ──────────────────────────────────────
   // Called by the frontend after a board is unlocked.
   // The client joins the room so it can send/receive updates.
   //
   // Payload: { boardId: string }
-  socket.on('join_board', async ({ boardId }) => {
+  socket.on('join_board', async ({ boardId, userName }) => {
     if (!boardId) return;
+    const normalizedName = normalizeName(userName);
+    if (!normalizedName) {
+      socket.emit('join_error', { message: 'Display name is required.' });
+      return;
+    }
 
     socket.join(boardId); // join the room named after the boardId
+    socket.data.boardId = boardId;
+    socket.data.boardUserName = normalizedName;
+    upsertParticipant(boardParticipants, boardId, socket.id, normalizedName);
     console.log(`[Socket.io] Socket ${socket.id} joined room: ${boardId}`);
 
     // Acknowledge the join to the connecting client only.
     socket.emit('joined_board', { boardId, message: 'Joined board room' });
+    socket.to(boardId).emit('user_joined', { userName: normalizedName });
+    io.to(boardId).emit('room_users', { users: participantsList(boardParticipants, boardId) });
 
     try {
       // Send existing whiteboard data to the newly joined user
@@ -134,8 +191,9 @@ io.on('connection', (socket) => {
   //   2. Broadcasts it to ALL OTHER clients in the same room.
   //
   // Payload: { boardId: string, content: string }
-  socket.on('text_update', async ({ boardId, content }) => {
+  socket.on('text_update', async ({ boardId, content, userName }) => {
     if (!boardId) return;
+    const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
 
     try {
       // Persist updated content to MongoDB.
@@ -148,6 +206,12 @@ io.on('connection', (socket) => {
       // Broadcast to every OTHER socket in the room (not the sender).
       // This prevents the sender from receiving its own echo.
       socket.to(boardId).emit('receive_update', { boardId, content });
+      socket.to(boardId).emit('text_update_author', {
+        boardId,
+        content,
+        userName: author,
+        timestamp: Date.now(),
+      });
 
       console.log(`[Socket.io] Content updated for board: ${boardId}`);
     } catch (err) {
@@ -159,15 +223,22 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('text_typing', ({ boardId, userName }) => {
+    if (!boardId) return;
+    const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
+    socket.to(boardId).emit('text_typing', { boardId, userName: author, timestamp: Date.now() });
+  });
+
   // ── Event: image_added ──────────────────────────────────
   // Sent when a user uploads an image to the text board.
   // Broadcasts updated content with the image to all other users.
   //
   // Payload: { boardId: string, content: string, imageUrl: string }
-  socket.on('image_added', async ({ boardId, content, imageUrl }) => {
+  socket.on('image_added', async ({ boardId, content, imageUrl, userName }) => {
     if (!boardId) return;
+    const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
     // Broadcast the updated content with the image to other users
-    socket.to(boardId).emit('image_added', { boardId, content, imageUrl });
+    socket.to(boardId).emit('image_added', { boardId, content, imageUrl, userName: author });
     console.log(`[Socket.io] Image added to board: ${boardId}`);
   });
 
@@ -197,10 +268,47 @@ io.on('connection', (socket) => {
   socket.on('whiteboard_image_added', async ({ boardId, image }) => {
     if (!boardId || !image) return;
     try {
-      await Board.updateOne({ boardId }, { $push: { whiteboardData: image } });
+      const board = await Board.findOne({ boardId });
+      if (!board) return;
+      const data = Array.isArray(board.whiteboardData) ? board.whiteboardData : [];
+      const exists = data.some(item => item && item.type === 'image' && item.id === image.id);
+      if (!exists) {
+        board.whiteboardData = [...data, image];
+        await board.save();
+      }
       socket.to(boardId).emit('whiteboard_image_added', image);
     } catch (err) {
       console.error(`[Socket.io] Error saving whiteboard image:`, err.message);
+    }
+  });
+
+  socket.on('whiteboard_image_updated', async ({ boardId, image }) => {
+    if (!boardId || !image || !image.id) return;
+    try {
+      const board = await Board.findOne({ boardId });
+      if (!board) return;
+      const data = Array.isArray(board.whiteboardData) ? board.whiteboardData : [];
+      board.whiteboardData = data.map(item => (
+        item && item.type === 'image' && item.id === image.id ? { ...item, ...image } : item
+      ));
+      await board.save();
+      socket.to(boardId).emit('whiteboard_image_updated', image);
+    } catch (err) {
+      console.error('[Socket.io] Error updating whiteboard image:', err.message);
+    }
+  });
+
+  socket.on('whiteboard_image_removed', async ({ boardId, imageId }) => {
+    if (!boardId || !imageId) return;
+    try {
+      const board = await Board.findOne({ boardId });
+      if (!board) return;
+      const data = Array.isArray(board.whiteboardData) ? board.whiteboardData : [];
+      board.whiteboardData = data.filter(item => !(item && item.type === 'image' && item.id === imageId));
+      await board.save();
+      socket.to(boardId).emit('whiteboard_image_removed', { imageId });
+    } catch (err) {
+      console.error('[Socket.io] Error removing whiteboard image:', err.message);
     }
   });
 
@@ -209,12 +317,21 @@ io.on('connection', (socket) => {
   // ==========================================================
   const Whiteboard = require('./models/Whiteboard');
 
-  socket.on('join_whiteboard', async ({ whiteboardId }) => {
+  socket.on('join_whiteboard', async ({ whiteboardId, userName }) => {
     if (!whiteboardId) return;
+    const normalizedName = normalizeName(userName);
+    if (!normalizedName) {
+      socket.emit('join_error', { message: 'Display name is required.' });
+      return;
+    }
     socket.join(whiteboardId);
+    socket.data.whiteboardId = whiteboardId;
+    socket.data.whiteboardUserName = normalizedName;
+    upsertParticipant(whiteboardParticipants, whiteboardId, socket.id, normalizedName);
     console.log(`[Socket.io] Socket ${socket.id} joined standalone whiteboard: ${whiteboardId}`);
     socket.emit('joined_whiteboard', { whiteboardId });
-    socket.to(whiteboardId).emit('wb_user_joined');
+    socket.to(whiteboardId).emit('wb_user_joined', { userName: normalizedName });
+    io.to(whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, whiteboardId) });
   });
 
   socket.on('wb_draw_stroke', async ({ whiteboardId, stroke }) => {
@@ -240,10 +357,42 @@ io.on('connection', (socket) => {
   socket.on('wb_image_added', async ({ whiteboardId, image }) => {
     if (!whiteboardId || !image) return;
     try {
-      await Whiteboard.updateOne({ whiteboardId }, { $push: { images: image } });
+      const wb = await Whiteboard.findOne({ whiteboardId });
+      if (!wb) return;
+      const exists = (wb.images || []).some(item => item && item.id === image.id);
+      if (!exists) {
+        wb.images = [...(wb.images || []), image];
+        await wb.save();
+      }
       socket.to(whiteboardId).emit('wb_image_added', image);
     } catch (err) {
       console.error(`[Socket.io] Error saving standalone whiteboard image:`, err.message);
+    }
+  });
+
+  socket.on('wb_image_updated', async ({ whiteboardId, image }) => {
+    if (!whiteboardId || !image || !image.id) return;
+    try {
+      const wb = await Whiteboard.findOne({ whiteboardId });
+      if (!wb) return;
+      wb.images = (wb.images || []).map(item => (item && item.id === image.id ? { ...item, ...image } : item));
+      await wb.save();
+      socket.to(whiteboardId).emit('wb_image_updated', image);
+    } catch (err) {
+      console.error(`[Socket.io] Error updating standalone whiteboard image:`, err.message);
+    }
+  });
+
+  socket.on('wb_image_removed', async ({ whiteboardId, imageId }) => {
+    if (!whiteboardId || !imageId) return;
+    try {
+      const wb = await Whiteboard.findOne({ whiteboardId });
+      if (!wb) return;
+      wb.images = (wb.images || []).filter(item => !(item && item.id === imageId));
+      await wb.save();
+      socket.to(whiteboardId).emit('wb_image_removed', { imageId });
+    } catch (err) {
+      console.error(`[Socket.io] Error removing standalone whiteboard image:`, err.message);
     }
   });
 
@@ -262,7 +411,17 @@ io.on('connection', (socket) => {
   // Fires automatically when a client closes the connection.
   // Socket.io removes the socket from all rooms automatically.
   socket.on('disconnect', () => {
-    console.log(`[Socket.io] Client disconnected: ${socket.id}`);
+    const leftBoardName = removeParticipant(boardParticipants, socket.data.boardId, socket.id);
+    if (socket.data.boardId && leftBoardName) {
+      socket.to(socket.data.boardId).emit('user_left', { userName: leftBoardName });
+      io.to(socket.data.boardId).emit('room_users', { users: participantsList(boardParticipants, socket.data.boardId) });
+    }
+    const leftWbName = removeParticipant(whiteboardParticipants, socket.data.whiteboardId, socket.id);
+    if (socket.data.whiteboardId && leftWbName) {
+      socket.to(socket.data.whiteboardId).emit('wb_user_left', { userName: leftWbName });
+      io.to(socket.data.whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, socket.data.whiteboardId) });
+    }
+    // console.log(`[Socket.io] Client disconnected: ${socket.id}`);
   });
 });
 

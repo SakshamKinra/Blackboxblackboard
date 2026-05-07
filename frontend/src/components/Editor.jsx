@@ -1,16 +1,23 @@
 // src/components/Editor.jsx
-// Real-time collaborative editor using Socket.io with image upload support.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
+
 const API = process.env.REACT_APP_API_URL;
 
-export default function Editor({ boardId, initialContent, attachedImages = [], socket, connected, userCount }) {
-  const [content,    setContent]    = useState(initialContent || '');
+export default function Editor({ boardId, initialContent, socket, connected, userCount, displayName }) {
+  const [content, setContent] = useState(initialContent || '');
   const [saveStatus, setSaveStatus] = useState('');
-  const [uploading,  setUploading]  = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [contributors, setContributors] = useState([]);
+  const [typingUsers, setTypingUsers] = useState([]);
 
   const saveTimeout = useRef(null);
+  const typingTimeout = useRef(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setContent(initialContent || '');
+  }, [initialContent]);
 
   useEffect(() => {
     if (!socket) return;
@@ -19,8 +26,19 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
       setContent(incoming);
     };
 
-    const handleImageAdded = ({ content: incoming }) => {
-      setContent(incoming);
+    const handleAuthoredUpdate = ({ userName, content: latest, timestamp }) => {
+      setContributors((prev) => {
+        const filtered = prev.filter((item) => item.userName !== userName);
+        return [{ userName, latest: (latest || '').slice(-120), timestamp }, ...filtered].slice(0, 8);
+      });
+    };
+
+    const handleTyping = ({ userName }) => {
+      if (!userName || userName === displayName) return;
+      setTypingUsers((prev) => (prev.includes(userName) ? prev : [...prev, userName]));
+      window.setTimeout(() => {
+        setTypingUsers((prev) => prev.filter((name) => name !== userName));
+      }, 1800);
     };
 
     const handleUpdateError = () => {
@@ -29,15 +47,17 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
     };
 
     socket.on('receive_update', handleReceiveUpdate);
-    socket.on('image_added', handleImageAdded);
+    socket.on('text_update_author', handleAuthoredUpdate);
+    socket.on('text_typing', handleTyping);
     socket.on('update_error', handleUpdateError);
 
     return () => {
       socket.off('receive_update', handleReceiveUpdate);
-      socket.off('image_added', handleImageAdded);
+      socket.off('text_update_author', handleAuthoredUpdate);
+      socket.off('text_typing', handleTyping);
       socket.off('update_error', handleUpdateError);
     };
-  }, [socket]);
+  }, [socket, displayName]);
 
   const handleChange = useCallback((e) => {
     const newContent = e.target.value;
@@ -45,7 +65,8 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
     setSaveStatus('saving');
 
     if (socket && connected) {
-      socket.emit('text_update', { boardId, content: newContent });
+      socket.emit('text_update', { boardId, content: newContent, userName: displayName });
+      socket.emit('text_typing', { boardId, userName: displayName });
     }
 
     clearTimeout(saveTimeout.current);
@@ -53,9 +74,11 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus(''), 2000);
     }, 800);
-  }, [boardId, socket, connected]);
 
-  // Handle image upload
+    clearTimeout(typingTimeout.current);
+    typingTimeout.current = setTimeout(() => setTypingUsers((prev) => prev.filter((n) => n !== displayName)), 1500);
+  }, [boardId, socket, connected, displayName]);
+
   const handleImageUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -69,18 +92,14 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      if (data.success) {
-        // Insert image markdown into content
-        const imageMarkup = `\n![${file.name}](${API}${data.imageUrl})\n`;
-        const newContent = content + imageMarkup;
-        setContent(newContent);
-
-        // Sync via socket
-        if (socket && connected) {
-          socket.emit('text_update', { boardId, content: newContent });
-          socket.emit('image_added', { boardId, content: newContent, imageUrl: data.imageUrl });
-        }
-
+      if (data.success && socket && connected) {
+        const whiteboardImage = {
+          ...data.image,
+          src: `${API}${data.imageUrl}`,
+          userName: displayName,
+        };
+        socket.emit('whiteboard_image_added', { boardId, image: whiteboardImage });
+        socket.emit('image_added', { boardId, imageUrl: data.imageUrl, userName: displayName });
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus(''), 2000);
       }
@@ -89,128 +108,78 @@ export default function Editor({ boardId, initialContent, attachedImages = [], s
       setTimeout(() => setSaveStatus(''), 3000);
     } finally {
       setUploading(false);
-      // Reset file input so the same file can be re-uploaded
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [boardId, content, socket, connected]);
-
-  // Render content with inline images
-  function renderContent(text) {
-    if (!text) return null;
-    // Match markdown-style images: ![alt](url)
-    const parts = text.split(/(!\[.*?\]\(.*?\))/g);
-    return parts.map((part, i) => {
-      const match = part.match(/!\[(.*?)\]\((.*?)\)/);
-      if (match) {
-        return (
-          <div key={i} className="my-3 inline-block">
-            <img
-              src={match[2]}
-              alt={match[1]}
-              className="max-w-full max-h-80 rounded-lg border border-[#C9A84C]/20 shadow-lg"
-              style={{ maxWidth: '100%' }}
-            />
-          </div>
-        );
-      }
-      return part ? <span key={i}>{part}</span> : null;
-    });
-  }
-
-  // Check if content has images to show preview
-  const hasImages = /!\[.*?\]\(.*?\)/.test(content);
+  }, [boardId, socket, connected, displayName]);
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 120px)' }}>
-
-      {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-[#C9A84C]/20 bb-card">
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-[#1D9E75]' : 'bg-[#ED93B1]'} animate-pulse`} />
-          <span className="text-sm font-medium bb-text">
-            {connected ? 'Live' : 'Reconnecting…'}
-          </span>
+          <span className="text-sm font-medium bb-text">{connected ? 'Live' : 'Reconnecting…'}</span>
           <span className="ml-2 px-2 py-0.5 rounded-full bg-[#1D9E75]/15 text-[#1D9E75] text-xs font-semibold">
             {userCount} {userCount === 1 ? 'user' : 'users'} online
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Image upload button */}
           <button
             id="image-upload-btn"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/20
-                       text-sm font-medium text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Upload Image"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/20 text-sm font-medium text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Upload Image to Whiteboard"
           >
-            {uploading ? (
-              <>
-                <span className="w-3 h-3 border border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
-                Uploading…
-              </>
-            ) : '📎 Image'}
+            {uploading ? 'Uploading…' : '📎 Image to Whiteboard'}
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="hidden"
-          />
-
-          {/* Save status */}
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
           <div className="text-xs bb-muted">
-            {saveStatus === 'saving' && (
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 border border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
-                Saving…
-              </span>
-            )}
-            {saveStatus === 'saved'  && <span className="text-[#1D9E75]">✓ Saved</span>}
-            {saveStatus === 'error'  && <span className="text-[#ED93B1]">⚠ Save failed</span>}
+            {saveStatus === 'saving' && <span>Saving…</span>}
+            {saveStatus === 'saved' && <span className="text-[#1D9E75]">✓ Saved</span>}
+            {saveStatus === 'error' && <span className="text-[#ED93B1]">⚠ Save failed</span>}
           </div>
         </div>
       </div>
 
-      {/* Image preview area — shows rendered images when present */}
-      {hasImages && (
-        <div className="px-6 py-3 border-b border-[#C9A84C]/10 bb-card overflow-auto"
-             style={{ maxHeight: '200px' }}>
-          <div className="flex flex-wrap gap-3">
-            {renderContent(content)}
-          </div>
+      {typingUsers.length > 0 && (
+        <div className="px-4 py-2 text-xs border-b border-[#C9A84C]/10 bg-[var(--card)]">
+          <span className="text-[#C9A84C] font-semibold">Typing:</span> {typingUsers.join(', ')}
         </div>
       )}
 
-      {/* Textarea */}
       <textarea
         id="board-editor"
         value={content}
         onChange={handleChange}
-        placeholder="Start writing… your collaborators see changes in real-time ✨"
-        className="flex-1 w-full resize-none p-6 text-base leading-relaxed outline-none
-                   bb-bg bb-text placeholder-[var(--muted)] font-mono
-                   transition-colors duration-300"
+        placeholder="Start writing... everyone sees live updates with names."
+        className="flex-1 w-full resize-none p-6 text-base leading-relaxed outline-none bb-bg bb-text placeholder-[var(--muted)] font-mono transition-colors duration-300"
         spellCheck
       />
 
-      {/* Attached Images Gallery */}
-      {attachedImages.length > 0 && (
-        <div className="px-6 py-4 border-t border-[#C9A84C]/10 bg-[var(--card)] flex gap-4 overflow-x-auto shrink-0">
-          {attachedImages.map((src, i) => (
-            <img 
-              key={i} 
-              src={`${API}${src}`} 
-              alt={`Attachment ${i+1}`} 
-              className="max-h-[200px] rounded-lg object-contain shadow-lg cursor-pointer hover:opacity-90 transition-opacity" 
-              onClick={() => window.open(`${API}${src}`, '_blank')} 
-            />
-          ))}
-        </div>
-      )}
+      <div className="px-6 py-4 border-t border-[#C9A84C]/10 bg-[var(--card)]/50">
+        <p className="text-xs uppercase tracking-widest text-[#C9A84C] font-bold mb-3 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#C9A84C]"></span>
+          Recent Contributions
+        </p>
+        {contributors.length === 0 ? (
+          <p className="text-xs bb-muted italic">No remote updates yet. Your changes are saved automatically.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {contributors.map((entry) => (
+              <div key={`${entry.userName}-${entry.timestamp}`} className="text-xs bb-text bg-[var(--bg)] border border-[#C9A84C]/20 rounded-xl p-3 shadow-sm flex flex-col gap-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-[#C9A84C]">{entry.userName}</span>
+                  <span className="text-[10px] opacity-50">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="opacity-80 line-clamp-2 italic">
+                  "{entry.latest || '...'}"
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

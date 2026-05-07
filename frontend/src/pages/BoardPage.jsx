@@ -95,6 +95,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
   const [activatedAt,  setActivatedAt]  = useState(null);
   const [expiresAfter, setExpiresAfter] = useState(3);
   const [attachedImages, setAttachedImages] = useState([]);
+  const [displayName, setDisplayName] = useState('');
   
   const [activeTab,    setActiveTab]    = useState('text');
   const [socket,       setSocket]       = useState(null);
@@ -125,12 +126,16 @@ export default function BoardPage({ darkMode, toggleTheme }) {
     fetchBoard();
   }, [id]);
 
-  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedAttachedImages) {
+  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedAttachedImages, unlockedDisplayName) {
     setContent(unlockedContent);
     setBoardName(unlockedBoardName || '');
     if (unlockedActivatedAt) setActivatedAt(unlockedActivatedAt);
     if (unlockedExpiresAfter) setExpiresAfter(unlockedExpiresAfter);
     if (unlockedAttachedImages) setAttachedImages(unlockedAttachedImages);
+    if (unlockedDisplayName) {
+      setDisplayName(unlockedDisplayName);
+      sessionStorage.setItem(`bb-name:${id}`, unlockedDisplayName);
+    }
     setUnlocked(true);
   }
 
@@ -142,7 +147,9 @@ export default function BoardPage({ darkMode, toggleTheme }) {
 
     newSocket.on('connect', () => {
       setConnected(true);
-      newSocket.emit('join_board', { boardId: id });
+      const savedName = displayName || sessionStorage.getItem(`bb-name:${id}`) || '';
+      if (!savedName.trim()) return;
+      newSocket.emit('join_board', { boardId: id, userName: savedName });
     });
 
     newSocket.on('user_joined', () => setUserCount(c => c + 1));
@@ -151,7 +158,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
     newSocket.on('disconnect', () => setConnected(false));
 
     return () => newSocket.disconnect();
-  }, [unlocked, id]);
+  }, [unlocked, id, displayName]);
 
   if (loading)   return <LoadingScreen />;
   if (isExpired) return <ExpiredScreen navigate={navigate} />;
@@ -194,10 +201,10 @@ export default function BoardPage({ darkMode, toggleTheme }) {
             </div>
             <div className="flex-1 relative">
               <div className={`absolute inset-0 flex flex-col ${activeTab === 'text' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
-                <Editor boardId={id} initialContent={content} attachedImages={attachedImages} socket={socket} connected={connected} userCount={userCount} />
+                <Editor boardId={id} initialContent={content} socket={socket} connected={connected} userCount={userCount} displayName={displayName} />
               </div>
               <div className={`absolute inset-0 flex flex-col ${activeTab === 'whiteboard' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
-                <Whiteboard boardId={id} socket={socket} connected={connected} userCount={userCount} />
+                <Whiteboard boardId={id} socket={socket} connected={connected} userCount={userCount} displayName={displayName} />
               </div>
             </div>
           </div>

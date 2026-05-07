@@ -7,6 +7,7 @@ const API = process.env.REACT_APP_API_URL;
 
 export default function LockScreen({ board, onUnlock }) {
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
 
@@ -14,6 +15,11 @@ export default function LockScreen({ board, onUnlock }) {
   const needsDate     = board.unlockType === 'date'     || board.unlockType === 'both';
 
   async function handleUnlock() {
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setError('Display name is required.');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -21,7 +27,7 @@ export default function LockScreen({ board, onUnlock }) {
         password: needsPassword ? password : undefined,
       });
       if (data.success && !data.locked) {
-        onUnlock(data.content, data.boardName, data.activatedAt, data.expiresAfter, data.attachedImages);
+        onUnlock(data.content, data.boardName, data.activatedAt, data.expiresAfter, data.attachedImages, trimmedName);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Unlock failed. Try again.');
@@ -74,6 +80,22 @@ export default function LockScreen({ board, onUnlock }) {
           />
         </div>
       )}
+
+      <div className="w-full max-w-sm mb-4 animate-slide-up">
+        <label className="block text-sm font-semibold text-[#C9A84C] mb-1 uppercase tracking-wider">
+          Your Name
+        </label>
+        <input
+          id="display-name"
+          type="text"
+          value={displayName}
+          onChange={e => { setDisplayName(e.target.value); setError(''); }}
+          onKeyDown={e => e.key === 'Enter' && handleUnlock()}
+          placeholder="Required to join collaboration"
+          className="bb-input"
+          maxLength={30}
+        />
+      </div>
 
       {error && (
         <p className="text-[#ED93B1] text-sm mb-4 flex items-center gap-2 animate-fade-in">

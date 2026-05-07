@@ -23,17 +23,40 @@ router.post('/:id/upload', upload.single('image'), async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Board not found.' });
     }
 
+    // Check if board has expired
+    const now = new Date();
+    const expiryTime = board.activatedAt ? (new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000) : null;
+    if (board.isExpired || (expiryTime && now.getTime() > expiryTime)) {
+      if (!board.isExpired) {
+        board.isExpired = true;
+        await board.save();
+      }
+      return res.status(410).json({ success: false, message: 'Cannot upload to an expired board.' });
+    }
+
     // Build the image URL using the server base URL
     const imageUrl = `/uploads/${req.file.filename}`;
+    const image = {
+      type: 'image',
+      id: Date.now().toString(),
+      src: imageUrl,
+      x: 40,
+      y: 40,
+      width: 260,
+      height: 180,
+    };
 
-    // Save the image URL to the board's images array
+    // Keep image URL for backward compatibility / cleanup jobs.
     board.images.push(imageUrl);
+    // Source of truth for board whiteboard layer.
+    board.whiteboardData.push(image);
     await board.save();
 
     return res.status(200).json({
       success: true,
       message: 'Image uploaded successfully',
       imageUrl,
+      image,
     });
   } catch (err) {
     next(err);

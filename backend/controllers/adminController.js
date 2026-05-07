@@ -178,4 +178,58 @@ const deleteAllBoards = async (req, res, next) => {
   }
 };
 
-module.exports = { adminLogin, getAllBoards, deleteExpiredBoards, deleteOldBoards, deleteAllBoards };
+// ------------------------------------------------------------
+// getAllWhiteboards  →  GET /api/admin/whiteboards
+// ------------------------------------------------------------
+const getAllWhiteboards = async (req, res, next) => {
+  try {
+    const whiteboards = await Whiteboard.find()
+      .select('whiteboardId title createdAt expiresAt')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: whiteboards.length,
+      whiteboards,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ------------------------------------------------------------
+// deleteExpiredWhiteboards → DELETE /api/admin/whiteboards/expired
+// ------------------------------------------------------------
+const deleteExpiredWhiteboards = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const expiredWbs = await Whiteboard.find({ expiresAt: { $lt: now } });
+    let deleteCount = 0;
+
+    for (const wb of expiredWbs) {
+      if (wb.images && wb.images.length > 0) {
+        wb.images.forEach(img => {
+          if (img && img.src && img.src.includes('/uploads/')) {
+            deleteImages([img.src]);
+          }
+        });
+      }
+      await Whiteboard.deleteOne({ _id: wb._id });
+      deleteCount++;
+    }
+
+    return res.status(200).json({ success: true, message: `Deleted ${deleteCount} expired whiteboards.` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { 
+  adminLogin, 
+  getAllBoards, 
+  getAllWhiteboards,
+  deleteExpiredBoards, 
+  deleteOldBoards, 
+  deleteExpiredWhiteboards,
+  deleteAllBoards 
+};
