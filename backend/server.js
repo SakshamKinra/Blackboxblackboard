@@ -24,25 +24,33 @@ const Board = require('./models/Board');
 const app = express();
 const httpServer = http.createServer(app);
 
-// ── Socket.io setup ─────────────────────────────────────────
-// Allow connections from the frontend origin defined in .env.
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
+// ── CORS configuration ──────────────────────────────────────
+// Dynamic origin check — allows Vercel production and local dev.
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'https://blackboxblackboard.vercel.app',
+      'https://blackboxblackboard.vercel.app/',
+      'http://localhost:3000'
+    ];
+    if (!origin || allowedOrigins.some(o => origin.startsWith(o.replace(/\/$/, '')))) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
   },
-});
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
-// ── CORS — Express REST API ──────────────────────────────────
-// Restricts REST API access to the configured frontend origin.
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  })
-);
+// ── Socket.io setup ─────────────────────────────────────────
+// Uses the same CORS config as Express.
+const io = new Server(httpServer, {
+  cors: corsOptions,
+});
 
 // ── Body parsing ─────────────────────────────────────────────
 // Parse incoming JSON request bodies (required for POST routes).
