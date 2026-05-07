@@ -15,14 +15,14 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  
+
   const [ctx, setCtx] = useState(null);
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [userCount, setUserCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // Whiteboard State
   const [title, setTitle] = useState('');
   const [isDrawing, setIsDrawing] = useState(false);
@@ -32,16 +32,16 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const [textInput, setTextInput] = useState(null);
   const [images, setImages] = useState([]);
   const [strokes, setStrokes] = useState([]);
-  
+
   const [copied, setCopied] = useState(false);
-  
+
   const lastPos = useRef({ x: 0, y: 0 });
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000'];
 
   // Fetch initial data & setup socket
   useEffect(() => {
     let newSocket;
-    
+
     async function init() {
       try {
         const { data } = await axios.get(`${API}/api/whiteboards/${id}`);
@@ -49,16 +49,16 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           setTitle(data.whiteboard.title);
           setStrokes(data.whiteboard.strokes);
           setImages(data.whiteboard.images);
-          
+
           // Connect socket
           newSocket = io(SOCKET_URL, { transports: ['websocket'] });
           setSocket(newSocket);
-          
+
           newSocket.on('connect', () => {
             setConnected(true);
             newSocket.emit('join_whiteboard', { whiteboardId: id });
           });
-          
+
           newSocket.on('wb_user_joined', () => setUserCount(c => c + 1));
           newSocket.on('wb_receive_stroke', stroke => {
             setStrokes(prev => [...prev, stroke]);
@@ -75,7 +75,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             setStrokes(prev => prev.slice(0, -1));
           });
           newSocket.on('disconnect', () => setConnected(false));
-          
+
           setLoading(false);
         }
       } catch (err) {
@@ -83,9 +83,9 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
         setLoading(false);
       }
     }
-    
+
     init();
-    
+
     return () => {
       if (newSocket) newSocket.disconnect();
     };
@@ -99,11 +99,11 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
     const parent = containerRef.current;
     const rect = parent.getBoundingClientRect();
-    
+
     const dpr = window.devicePixelRatio || 1;
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
-    
+
     const context = canvas.getContext('2d');
     context.scale(dpr, dpr);
     context.lineCap = 'round';
@@ -127,7 +127,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       ctxNew.scale(dpr, dpr);
       ctxNew.lineCap = 'round';
       ctxNew.lineJoin = 'round';
-      
+
       // Redraw all strokes to avoid pixelation
       ctxNew.clearRect(0, 0, canvas.width, canvas.height);
       setStrokes(prev => {
@@ -151,7 +151,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   function drawStrokeOnCanvas(stroke, context) {
     if (!context) return;
-    
+
     if (stroke.type === 'text') {
       context.font = `${stroke.lineWidth * 2 + 10}px Inter`;
       context.fillStyle = stroke.color;
@@ -159,7 +159,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       context.fillText(stroke.content, stroke.x, stroke.y);
       return;
     }
-    
+
     context.beginPath();
     context.moveTo(stroke.startX, stroke.startY);
     context.lineTo(stroke.endX, stroke.endY);
@@ -185,13 +185,13 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     e.preventDefault();
     if (!ctx) return;
     const { x, y } = getCoordinates(e);
-    
+
     if (toolType === 'text') {
       if (textInput) submitText(); // submit previous
       setTextInput({ x, y, value: '' });
       return;
     }
-    
+
     if (textInput) submitText();
     setIsDrawing(true);
     lastPos.current = { x, y };
@@ -290,17 +290,17 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const downloadPNG = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     // Create temp canvas to merge background, images, and strokes
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
     const tCtx = tempCanvas.getContext('2d');
-    
+
     // Fill background
     tCtx.fillStyle = darkMode ? '#13132b' : '#fff8f0';
     tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    
+
     // Draw images
     const drawImages = () => {
       return Promise.all(images.map(imgData => {
@@ -319,7 +319,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     drawImages().then(() => {
       // Draw strokes
       tCtx.drawImage(canvas, 0, 0);
-      
+
       const link = document.createElement('a');
       link.download = `${title || 'Whiteboard'}.png`;
       link.href = tempCanvas.toDataURL('image/png');
@@ -372,7 +372,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             </div>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/30 text-xs font-semibold text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all">
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Share'}
@@ -385,7 +385,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
       <div className="flex items-center justify-center md:justify-between px-4 py-2 border-b z-20 shrink-0 overflow-x-auto"
-           style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
+        style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
         <div className="flex items-center gap-2">
           <button onClick={() => setToolType('pen')} className={`p-2 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-white/5'}`} title="Pen">
             <Pen size={18} />
@@ -437,12 +437,12 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
       {/* ── Canvas Area ───────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden bg-[var(--bg)] cursor-crosshair">
-        
+
         {/* Render images as DOM elements underneath the canvas drawing layer */}
         {images.map((img) => (
-          <img 
+          <img
             key={img.id}
-            src={img.src} 
+            src={img.src}
             alt="Upload"
             className="absolute rounded shadow-lg pointer-events-none opacity-90"
             style={{ left: img.x, top: img.y, width: img.width, height: img.height }}
@@ -460,7 +460,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
         />
-        
+
         {textInput && (
           <input
             type="text"
