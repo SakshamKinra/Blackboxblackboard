@@ -94,7 +94,6 @@ export default function BoardPage({ darkMode, toggleTheme }) {
   const [isExpired,    setIsExpired]    = useState(false);
   const [activatedAt,  setActivatedAt]  = useState(null);
   const [expiresAfter, setExpiresAfter] = useState(3);
-  const [attachedImages, setAttachedImages] = useState([]);
   const [displayName, setDisplayName] = useState('');
   
   const [activeTab,    setActiveTab]    = useState('text');
@@ -126,12 +125,11 @@ export default function BoardPage({ darkMode, toggleTheme }) {
     fetchBoard();
   }, [id]);
 
-  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedAttachedImages, unlockedDisplayName) {
+  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedDisplayName) {
     setContent(unlockedContent);
     setBoardName(unlockedBoardName || '');
     if (unlockedActivatedAt) setActivatedAt(unlockedActivatedAt);
     if (unlockedExpiresAfter) setExpiresAfter(unlockedExpiresAfter);
-    if (unlockedAttachedImages) setAttachedImages(unlockedAttachedImages);
     if (unlockedDisplayName) {
       setDisplayName(unlockedDisplayName);
       sessionStorage.setItem(`bb-name:${id}`, unlockedDisplayName);

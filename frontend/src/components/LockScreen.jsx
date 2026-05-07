@@ -27,7 +27,7 @@ export default function LockScreen({ board, onUnlock }) {
         password: needsPassword ? password : undefined,
       });
       if (data.success && !data.locked) {
-        onUnlock(data.content, data.boardName, data.activatedAt, data.expiresAfter, data.attachedImages, trimmedName);
+        onUnlock(data.content, data.boardName, data.activatedAt, data.expiresAfter, trimmedName);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Unlock failed. Try again.');
