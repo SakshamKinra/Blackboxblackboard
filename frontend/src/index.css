@@ -1,0 +1,134 @@
+/* ─────────────────────────────────────────────
+   Google Fonts – Inter (must come BEFORE @tailwind)
+───────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ─────────────────────────────────────────────
+   Tailwind base layers
+───────────────────────────────────────────── */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────
+   CSS custom properties — dark (default)
+   Switched by toggling the `dark` class on <html>
+───────────────────────────────────────────── */
+:root {
+  --bg:       #0d0d1a;
+  --card:     #13132b;
+  --text:     #f5ecd7;
+  --muted:    #8878a8;
+}
+
+html.dark {
+  --bg:       #0d0d1a;
+  --card:     #13132b;
+  --text:     #f5ecd7;
+  --muted:    #8878a8;
+}
+
+/* Light mode overrides */
+html:not(.dark) {
+  --bg:       #fdf6ee;
+  --card:     #fff8f0;
+  --text:     #2a1f0e;
+  --muted:    #9a8878;
+}
+
+/* ─────────────────────────────────────────────
+   Root resets
+───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* ─────────────────────────────────────────────
+   Scrollbar styling
+───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C9A84C55; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #C9A84C; }
+
+/* ─────────────────────────────────────────────
+   Glassmorphism card helper
+───────────────────────────────────────────── */
+.glass {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(201, 168, 76, 0.15);
+}
+
+/* ─────────────────────────────────────────────
+   Gradient text utility
+───────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #C9A84C, #ED93B1, #AFA9EC);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─────────────────────────────────────────────
+   Gold glow button
+───────────────────────────────────────────── */
+.btn-gold {
+  background: linear-gradient(135deg, #C9A84C, #e8c870);
+  color: #0d0d1a;
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 0.75rem 2rem;
+  transition: all 0.25s ease;
+  box-shadow: 0 0 0 0 rgba(201, 168, 76, 0.4);
+  cursor: pointer;
+}
+.btn-gold:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(201, 168, 76, 0.45);
+}
+.btn-gold:active { transform: translateY(0); }
+.btn-gold:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ─────────────────────────────────────────────
+   Theme-aware backgrounds via CSS vars
+   Used directly in JSX via style={{ }} or these classes
+───────────────────────────────────────────── */
+.bb-bg   { background-color: var(--bg);   color: var(--text); }
+.bb-card { background-color: var(--card); color: var(--text); }
+.bb-text  { color: var(--text); }
+.bb-muted { color: var(--muted); }
+
+/* ─────────────────────────────────────────────
+   Input field style
+───────────────────────────────────────────── */
+.bb-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 168, 76, 0.25);
+  padding: 0.7rem 1rem;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background-color: var(--bg);
+  color: var(--text);
+}
+.bb-input::placeholder { color: var(--muted); }
+.bb-input:focus {
+  border-color: #C9A84C;
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.15);
+}
+
+/* datetime-local colour fix */
+.bb-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.6) sepia(1) hue-rotate(5deg) saturate(5);
+  cursor: pointer;
+}
