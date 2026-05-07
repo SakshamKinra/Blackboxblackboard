@@ -166,7 +166,7 @@ io.on('connection', (socket) => {
     socket.data.boardId = boardId;
     socket.data.boardUserName = normalizedName;
     upsertParticipant(boardParticipants, boardId, socket.id, normalizedName);
-    console.log(`[Socket.io] Socket ${socket.id} joined room: ${boardId}`);
+    // console.log(`[Socket.io] Socket ${socket.id} joined room: ${boardId}`);
 
     // Acknowledge the join to the connecting client only.
     socket.emit('joined_board', { boardId, message: 'Joined board room' });
@@ -328,7 +328,7 @@ io.on('connection', (socket) => {
     socket.data.whiteboardId = whiteboardId;
     socket.data.whiteboardUserName = normalizedName;
     upsertParticipant(whiteboardParticipants, whiteboardId, socket.id, normalizedName);
-    console.log(`[Socket.io] Socket ${socket.id} joined standalone whiteboard: ${whiteboardId}`);
+    // console.log(`[Socket.io] Socket ${socket.id} joined standalone whiteboard: ${whiteboardId}`);
     socket.emit('joined_whiteboard', { whiteboardId });
     socket.to(whiteboardId).emit('wb_user_joined', { userName: normalizedName });
     io.to(whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, whiteboardId) });
