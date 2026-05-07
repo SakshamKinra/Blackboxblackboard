@@ -1,13 +1,14 @@
 // src/pages/CreateBoard.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { Paperclip, X } from 'lucide-react';
 
 const API = process.env.REACT_APP_API_URL;
 
 function Navbar({ darkMode, toggleTheme, navigate }) {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 glass bb-card">
+    <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 glass" style={{ backgroundColor: 'var(--nav-bg)' }}>
       <button onClick={() => navigate('/')} className="text-2xl font-extrabold text-[#C9A84C] tracking-tight">
         ⬛ BlackBoard
       </button>
@@ -30,6 +31,10 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
   const [unlockAt,   setUnlockAt]   = useState('');
   const [password,   setPassword]   = useState('');
   const [content,    setContent]    = useState('');
+  const [boardName,     setBoardName]     = useState('');
+  const [expiresAfter,  setExpiresAfter]  = useState('');
+  const [attachments,   setAttachments]   = useState([]);
+  const fileInputRef = useRef(null);
 
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
@@ -47,11 +52,20 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
 
     setLoading(true);
     try {
-      const { data } = await axios.post(`${API}/api/boards`, {
-        content,
-        unlockType,
-        unlockAt:  needsDate     ? new Date(unlockAt).toISOString() : undefined,
-        password:  needsPassword ? password : undefined,
+      const formData = new FormData();
+      formData.append('content', content);
+      formData.append('unlockType', unlockType);
+      if (boardName.trim()) formData.append('boardName', boardName.trim());
+      if (needsDate && unlockAt) formData.append('unlockAt', new Date(unlockAt).toISOString());
+      if (needsPassword && password) formData.append('password', password);
+      if (expiresAfter) formData.append('expiresAfter', Number(expiresAfter));
+      
+      attachments.forEach(file => {
+        formData.append('images', file);
+      });
+
+      const { data } = await axios.post(`${API}/api/boards`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       if (data.success) setShareableLink(data.shareableLink);
     } catch (err) {
@@ -68,6 +82,30 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
   }
 
   const boardId = shareableLink?.split('/').pop();
+
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    e.target.value = ''; // reset
+    
+    if (attachments.length + files.length > 2) {
+      setError('Maximum 2 images allowed');
+      return;
+    }
+    
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Image must be under 10MB');
+        return;
+      }
+    }
+    
+    setAttachments(prev => [...prev, ...files].slice(0, 2));
+    setError('');
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
 
   return (
     <div className="bb-bg min-h-screen transition-colors duration-300 pb-20">
@@ -110,6 +148,22 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Board Name */}
+          <div className="animate-fade-in">
+            <label htmlFor="board-name" className="block text-sm font-semibold text-[#C9A84C] mb-2 uppercase tracking-wider">
+              Board Name <span className="text-xs normal-case bb-muted">(optional)</span>
+            </label>
+            <input
+              id="board-name"
+              type="text"
+              value={boardName}
+              onChange={e => setBoardName(e.target.value)}
+              placeholder="Give your board a name…"
+              className="bb-input"
+              maxLength={100}
+            />
           </div>
 
           {/* Date */}
@@ -157,8 +211,64 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
               value={content}
               onChange={e => setContent(e.target.value)}
               placeholder="Write something to lock away… or leave empty to start fresh."
-              className="bb-input resize-none font-mono leading-relaxed"
+              className="bb-input resize-none font-mono leading-relaxed mb-3"
             />
+            
+            {/* Attachment UI */}
+            <div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-sm font-medium bb-muted hover:text-[#C9A84C] transition-colors mb-3"
+              >
+                <Paperclip size={16} /> Attach images
+              </button>
+              <input 
+                type="file" 
+                multiple 
+                accept="image/jpeg, image/png, image/gif, image/webp"
+                className="hidden" 
+                ref={fileInputRef}
+                onChange={handleFileChange}
+              />
+              
+              {attachments.length > 0 && (
+                <div className="flex gap-3 flex-wrap">
+                  {attachments.map((file, index) => (
+                    <div key={index} className="relative group">
+                      <img 
+                        src={URL.createObjectURL(file)} 
+                        alt="preview" 
+                        className="w-20 h-20 object-cover rounded-lg border border-[#C9A84C]/30"
+                      />
+                      <button
+                        onClick={() => removeAttachment(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Link Expiry */}
+          <div className="animate-fade-in">
+            <label htmlFor="expires-after" className="block text-sm font-semibold text-[#ED93B1] mb-2 uppercase tracking-wider">
+              Link Expiry <span className="text-xs normal-case bb-muted">(optional)</span>
+            </label>
+            <input
+              id="expires-after"
+              type="number"
+              min={1}
+              max={48}
+              value={expiresAfter}
+              onChange={e => setExpiresAfter(e.target.value)}
+              placeholder="Default: 3 hours, max 48, min 1"
+              className="bb-input"
+            />
+            <p className="text-xs bb-muted mt-1.5">How many hours the link stays valid after first unlock.</p>
           </div>
 
           {/* Error */}

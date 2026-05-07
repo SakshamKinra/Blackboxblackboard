@@ -6,7 +6,27 @@
 
 const bcrypt = require('bcrypt');
 const { nanoid } = require('nanoid');
+const fs = require('fs');
+const path = require('path');
 const Board = require('../models/Board');
+
+// Utility to delete images from disk
+const deleteImages = (imagesArray) => {
+  if (!imagesArray || imagesArray.length === 0) return;
+  imagesArray.forEach(imageUrl => {
+    try {
+      const fileName = imageUrl.split('/uploads/')[1];
+      if (fileName) {
+        const filePath = path.join(__dirname, '..', 'uploads', fileName);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (err) {
+      console.error(`[Storage Guard] Failed to delete image ${imageUrl}:`, err.message);
+    }
+  });
+};
 
 // Number of bcrypt salt rounds — 10 is the standard balance
 // between security and performance.
@@ -18,7 +38,7 @@ const SALT_ROUNDS = 10;
 // ------------------------------------------------------------
 const createBoard = async (req, res, next) => {
   try {
-    const { content, unlockType, unlockAt, password } = req.body;
+    const { content, unlockType, unlockAt, password, boardName, expiresAfter } = req.body;
 
     // Validate that unlockType is provided and is a valid enum value.
     const validTypes = ['date', 'password', 'both'];
@@ -56,13 +76,50 @@ const createBoard = async (req, res, next) => {
     // using nanoid (21 chars by default, ~2 billion IDs before collision risk).
     const boardId = nanoid(10);
 
+    // Validate expiresAfter if provided (1–48 hours)
+    let validExpiresAfter = 3; // default
+    if (expiresAfter !== undefined && expiresAfter !== null && expiresAfter !== '') {
+      const parsed = Number(expiresAfter);
+      if (isNaN(parsed) || parsed < 1 || parsed > 48) {
+        return res.status(400).json({
+          success: false,
+          message: 'expiresAfter must be between 1 and 48 hours.',
+        });
+      }
+      validExpiresAfter = parsed;
+    }
+
+    // Process any attached images uploaded via multer
+    let attachedImages = [];
+    if (req.files && req.files.length > 0) {
+      attachedImages = req.files.map(file => `/uploads/${file.filename}`);
+    }
+
+    // ── Storage Guard ─────────────────────────────────────────
+    // If total boards > 500, delete the 100 oldest.
+    const totalBoards = await Board.countDocuments();
+    if (totalBoards >= 500) {
+      const oldestBoards = await Board.find().sort({ createdAt: 1 }).limit(100);
+      let deletedOldCount = 0;
+      for (const oldBoard of oldestBoards) {
+        deleteImages(oldBoard.attachedImages);
+        deleteImages(oldBoard.images);
+        await Board.deleteOne({ _id: oldBoard._id });
+        deletedOldCount++;
+      }
+      console.log(`[Storage Guard] Cleaned ${deletedOldCount} old boards`);
+    }
+
     // Persist the board document in MongoDB.
     const board = await Board.create({
       boardId,
+      boardName: boardName || 'Untitled Board',
       content: content || '',
       unlockType,
       unlockAt: unlockAt ? new Date(unlockAt) : null,
       passwordHash,
+      expiresAfter: validExpiresAfter,
+      attachedImages,
     });
 
     // Build a shareable link using the CLIENT_URL from environment.
@@ -98,13 +155,26 @@ const getBoardStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Board not found' });
     }
 
+    // Check if board has expired
+    if (board.activatedAt) {
+      const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
+      if (Date.now() > expiryTime && !board.isExpired) {
+        board.isExpired = true;
+        await board.save();
+      }
+    }
+
     // Return only safe metadata — no content, no passwordHash.
     return res.status(200).json({
       success: true,
       boardId: board.boardId,
+      boardName: board.boardName,
       unlockType: board.unlockType,
       unlockAt: board.unlockAt,   // null for password-only boards
       createdAt: board.createdAt,
+      activatedAt: board.activatedAt,
+      expiresAfter: board.expiresAfter,
+      isExpired: board.isExpired,
     });
   } catch (err) {
     next(err);
@@ -125,6 +195,15 @@ const unlockBoard = async (req, res, next) => {
 
     if (!board) {
       return res.status(404).json({ success: false, message: 'Board not found' });
+    }
+
+    // ── Check expiration ────────────────────────────────────
+    if (board.isExpired) {
+      return res.status(410).json({
+        success: false,
+        message: 'This board has expired.',
+        isExpired: true,
+      });
     }
 
     // ── Date check ──────────────────────────────────────────
@@ -166,14 +245,24 @@ const unlockBoard = async (req, res, next) => {
       }
     }
 
+    // ── Set activatedAt on FIRST unlock ──────────────────────
+    if (!board.activatedAt) {
+      board.activatedAt = new Date();
+      await board.save();
+    }
+
     // ── All conditions met — return full content ─────────────
     return res.status(200).json({
       success: true,
       locked: false,
       boardId: board.boardId,
+      boardName: board.boardName,
       content: board.content,
       unlockType: board.unlockType,
       createdAt: board.createdAt,
+      activatedAt: board.activatedAt,
+      expiresAfter: board.expiresAfter,
+      attachedImages: board.attachedImages,
     });
   } catch (err) {
     next(err);

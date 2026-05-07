@@ -40,13 +40,13 @@ export default function Countdown({ unlockAt }) {
       {units.map(({ label, value }) => (
         <div
           key={label}
-          className="bb-card flex flex-col items-center rounded-xl px-4 py-3 min-w-[64px]
-                     border border-[#C9A84C]/20 shadow-lg"
+          className="flex flex-col items-center rounded-xl px-4 py-3 min-w-[64px] shadow-lg border"
+          style={{ backgroundColor: 'var(--countdown-bg)', borderColor: 'var(--countdown-border)' }}
         >
           <span className="text-3xl font-extrabold text-[#C9A84C] tabular-nums">
             {String(value).padStart(2, '0')}
           </span>
-          <span className="text-xs bb-muted uppercase tracking-widest mt-1">{label}</span>
+          <span className="text-xs uppercase tracking-widest mt-1" style={{ color: 'var(--muted)' }}>{label}</span>
         </div>
       ))}
     </div>

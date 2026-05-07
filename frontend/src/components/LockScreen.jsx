@@ -21,7 +21,7 @@ export default function LockScreen({ board, onUnlock }) {
         password: needsPassword ? password : undefined,
       });
       if (data.success && !data.locked) {
-        onUnlock(data.content);
+        onUnlock(data.content, data.boardName, data.activatedAt, data.expiresAfter, data.attachedImages);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Unlock failed. Try again.');
@@ -34,6 +34,12 @@ export default function LockScreen({ board, onUnlock }) {
     <div className="bb-bg flex flex-col items-center justify-center min-h-screen px-4 transition-colors duration-300">
 
       <div className="text-7xl mb-6 animate-fade-in select-none">🔒</div>
+
+      {board.boardName && board.boardName !== 'Untitled Board' && (
+        <h2 className="text-xl font-bold text-[#C9A84C] mb-2 text-center animate-fade-in">
+          {board.boardName}
+        </h2>
+      )}
 
       <h1 className="text-3xl font-extrabold gradient-text mb-2 text-center animate-slide-up">
         This Board is Locked

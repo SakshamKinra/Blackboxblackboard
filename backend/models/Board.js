@@ -1,8 +1,9 @@
 // ============================================================
 // models/Board.js
 // Mongoose schema for a BlackBoard board document.
-// Each board stores lock settings (date, password, or both)
-// and the collaborative text content.
+// Each board stores lock settings (date, password, or both),
+// the collaborative text content, whiteboard data, and
+// expiration settings.
 // ============================================================
 
 const mongoose = require('mongoose');
@@ -17,6 +18,15 @@ const boardSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    trim: true,
+  },
+
+  // ---------------------------------------------------------
+  // boardName — optional human-readable name for the board.
+  // ---------------------------------------------------------
+  boardName: {
+    type: String,
+    default: 'Untitled Board',
     trim: true,
   },
 
@@ -58,6 +68,51 @@ const boardSchema = new mongoose.Schema({
   passwordHash: {
     type: String,
     default: null,
+  },
+
+  // ---------------------------------------------------------
+  // Expiration fields — link expires X hours after first unlock
+  // ---------------------------------------------------------
+  activatedAt: {
+    type: Date,
+    default: null,
+  },
+
+  expiresAfter: {
+    type: Number,
+    default: 3,
+    min: 1,
+    max: 48,
+  },
+
+  isExpired: {
+    type: Boolean,
+    default: false,
+  },
+
+  // ---------------------------------------------------------
+  // images — URLs of images uploaded to the text board
+  // ---------------------------------------------------------
+  images: {
+    type: [String],
+    default: [],
+  },
+
+  // ---------------------------------------------------------
+  // attachedImages — URLs of images uploaded during board creation
+  // ---------------------------------------------------------
+  attachedImages: {
+    type: [String],
+    default: [],
+  },
+
+  // ---------------------------------------------------------
+  // whiteboardData — stores strokes and image data for the
+  // collaborative whiteboard canvas.
+  // ---------------------------------------------------------
+  whiteboardData: {
+    type: Array,
+    default: [],
   },
 
   // ---------------------------------------------------------

@@ -14,9 +14,14 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 // Internal modules
-const boardRoutes = require('./routes/boardRoutes');
+const boardRoutes  = require('./routes/boardRoutes');
+const adminRoutes  = require('./routes/adminRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
+const whiteboardRoutes = require('./routes/whiteboardRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const Board = require('./models/Board');
+const path = require('path');
+const fs = require('fs');
 
 // ── Express app & raw HTTP server ───────────────────────────
 // Socket.io needs the raw http.Server instance, not the Express
@@ -64,9 +69,20 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'BlackBoard API is running 🟢' });
 });
 
+// ── Static file serving for uploads ─────────────────────────
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // ── API Routes ───────────────────────────────────────────────
 // All board-related REST endpoints are mounted under /api/boards.
 app.use('/api/boards', boardRoutes);
+
+// Upload routes (image upload for boards) — also under /api/boards.
+app.use('/api/boards', uploadRoutes);
+
+// Admin routes mounted under /api/admin.
+app.use('/api/admin', adminRoutes);
+
+app.use('/api/whiteboards', whiteboardRoutes);
 
 // ── 404 handler — unknown routes ────────────────────────────
 // Catches any request that didn't match a registered route.
@@ -91,7 +107,7 @@ io.on('connection', (socket) => {
   // The client joins the room so it can send/receive updates.
   //
   // Payload: { boardId: string }
-  socket.on('join_board', ({ boardId }) => {
+  socket.on('join_board', async ({ boardId }) => {
     if (!boardId) return;
 
     socket.join(boardId); // join the room named after the boardId
@@ -99,6 +115,16 @@ io.on('connection', (socket) => {
 
     // Acknowledge the join to the connecting client only.
     socket.emit('joined_board', { boardId, message: 'Joined board room' });
+
+    try {
+      // Send existing whiteboard data to the newly joined user
+      const board = await Board.findOne({ boardId });
+      if (board && board.whiteboardData && board.whiteboardData.length > 0) {
+        socket.emit('whiteboard_data', board.whiteboardData);
+      }
+    } catch (err) {
+      console.error(`[Socket.io] Error fetching whiteboard data for board ${boardId}:`, err.message);
+    }
   });
 
   // ── Event: text_update ────────────────────────────────────
@@ -133,6 +159,105 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Event: image_added ──────────────────────────────────
+  // Sent when a user uploads an image to the text board.
+  // Broadcasts updated content with the image to all other users.
+  //
+  // Payload: { boardId: string, content: string, imageUrl: string }
+  socket.on('image_added', async ({ boardId, content, imageUrl }) => {
+    if (!boardId) return;
+    // Broadcast the updated content with the image to other users
+    socket.to(boardId).emit('image_added', { boardId, content, imageUrl });
+    console.log(`[Socket.io] Image added to board: ${boardId}`);
+  });
+
+  // ── Event: draw_stroke ────────────────────────────────────
+  socket.on('draw_stroke', async ({ boardId, stroke }) => {
+    if (!boardId || !stroke) return;
+    try {
+      await Board.updateOne({ boardId }, { $push: { whiteboardData: stroke } });
+      socket.to(boardId).emit('receive_stroke', stroke);
+    } catch (err) {
+      console.error(`[Socket.io] Error saving stroke:`, err.message);
+    }
+  });
+
+  // ── Event: clear_whiteboard ────────────────────────────────
+  socket.on('clear_whiteboard', async ({ boardId }) => {
+    if (!boardId) return;
+    try {
+      await Board.updateOne({ boardId }, { $set: { whiteboardData: [] } });
+      socket.to(boardId).emit('clear_whiteboard');
+    } catch (err) {
+      console.error(`[Socket.io] Error clearing whiteboard:`, err.message);
+    }
+  });
+
+  // ── Event: whiteboard_image_added ──────────────────────────
+  socket.on('whiteboard_image_added', async ({ boardId, image }) => {
+    if (!boardId || !image) return;
+    try {
+      await Board.updateOne({ boardId }, { $push: { whiteboardData: image } });
+      socket.to(boardId).emit('whiteboard_image_added', image);
+    } catch (err) {
+      console.error(`[Socket.io] Error saving whiteboard image:`, err.message);
+    }
+  });
+
+  // ==========================================================
+  // STANDALONE WHITEBOARD NAMESPACE / EVENTS
+  // ==========================================================
+  const Whiteboard = require('./models/Whiteboard');
+
+  socket.on('join_whiteboard', async ({ whiteboardId }) => {
+    if (!whiteboardId) return;
+    socket.join(whiteboardId);
+    console.log(`[Socket.io] Socket ${socket.id} joined standalone whiteboard: ${whiteboardId}`);
+    socket.emit('joined_whiteboard', { whiteboardId });
+    socket.to(whiteboardId).emit('wb_user_joined');
+  });
+
+  socket.on('wb_draw_stroke', async ({ whiteboardId, stroke }) => {
+    if (!whiteboardId || !stroke) return;
+    try {
+      await Whiteboard.updateOne({ whiteboardId }, { $push: { strokes: stroke } });
+      socket.to(whiteboardId).emit('wb_receive_stroke', stroke);
+    } catch (err) {
+      console.error(`[Socket.io] Error saving standalone stroke:`, err.message);
+    }
+  });
+
+  socket.on('wb_clear', async ({ whiteboardId }) => {
+    if (!whiteboardId) return;
+    try {
+      await Whiteboard.updateOne({ whiteboardId }, { $set: { strokes: [], images: [] } });
+      socket.to(whiteboardId).emit('wb_clear');
+    } catch (err) {
+      console.error(`[Socket.io] Error clearing standalone whiteboard:`, err.message);
+    }
+  });
+
+  socket.on('wb_image_added', async ({ whiteboardId, image }) => {
+    if (!whiteboardId || !image) return;
+    try {
+      await Whiteboard.updateOne({ whiteboardId }, { $push: { images: image } });
+      socket.to(whiteboardId).emit('wb_image_added', image);
+    } catch (err) {
+      console.error(`[Socket.io] Error saving standalone whiteboard image:`, err.message);
+    }
+  });
+
+  socket.on('wb_undo', async ({ whiteboardId }) => {
+    if (!whiteboardId) return;
+    try {
+      // Remove the last stroke from the array using $pop: 1
+      await Whiteboard.updateOne({ whiteboardId }, { $pop: { strokes: 1 } });
+      socket.to(whiteboardId).emit('wb_undo');
+    } catch (err) {
+      console.error(`[Socket.io] Error undoing standalone stroke:`, err.message);
+    }
+  });
+
   // ── Event: disconnect ─────────────────────────────────────
   // Fires automatically when a client closes the connection.
   // Socket.io removes the socket from all rooms automatically.
@@ -160,6 +285,85 @@ mongoose
       console.log(`[Server] 🚀  BlackBoard API listening on http://localhost:${PORT}`);
       console.log(`[Server] 🌐  Accepting requests from: ${process.env.CLIENT_URL}`);
     });
+
+    // ── Comprehensive 24-Hour Cleanup Job ───────────────────────
+    // Runs every 24 hours: deletes expired boards, old unactivated boards,
+    // expired whiteboards, and their associated uploaded files.
+    setInterval(async () => {
+      try {
+        const now = new Date();
+        let deletedBoardsCount = 0;
+        let deletedWhiteboardsCount = 0;
+
+        // Helper to delete physical files
+        const deleteImages = (imagesArray) => {
+          if (!imagesArray || imagesArray.length === 0) return;
+          imagesArray.forEach(imageUrl => {
+            try {
+              const fileName = imageUrl.split('/uploads/')[1];
+              if (fileName) {
+                const filePath = path.join(__dirname, 'uploads', fileName);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+              }
+            } catch (err) {
+              console.error(`[Cleanup] Failed to delete image ${imageUrl}:`, err.message);
+            }
+          });
+        };
+
+        // 1. All boards where isExpired: true
+        const explicitlyExpired = await Board.find({ isExpired: true });
+        
+        // 2. All boards where activatedAt exists and activatedAt + expiresAfter hours has passed
+        const activeBoards = await Board.find({ activatedAt: { $ne: null }, isExpired: false });
+        const dynamicallyExpired = activeBoards.filter(b => {
+          const expiryTime = new Date(b.activatedAt).getTime() + b.expiresAfter * 60 * 60 * 1000;
+          return now.getTime() > expiryTime;
+        });
+
+        // 3. All boards older than 7 days that were never activated
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const oldUnactivated = await Board.find({
+          activatedAt: null,
+          createdAt: { $lt: sevenDaysAgo }
+        });
+
+        const allBoardsToDelete = [...explicitlyExpired, ...dynamicallyExpired, ...oldUnactivated];
+        
+        // Remove duplicates if any
+        const uniqueBoardsToDelete = Array.from(new Set(allBoardsToDelete.map(b => b._id.toString())))
+          .map(id => allBoardsToDelete.find(b => b._id.toString() === id));
+
+        for (const board of uniqueBoardsToDelete) {
+          deleteImages(board.attachedImages);
+          deleteImages(board.images);
+          await Board.deleteOne({ _id: board._id });
+          deletedBoardsCount++;
+        }
+
+        // 4. All whiteboards where expiresAt is older than current time
+        const expiredWhiteboards = await Whiteboard.find({ expiresAt: { $lt: now } });
+        for (const wb of expiredWhiteboards) {
+          if (wb.images && wb.images.length > 0) {
+            wb.images.forEach(img => {
+              if (img && img.src && img.src.includes('/uploads/')) {
+                 deleteImages([img.src]);
+              }
+            });
+          }
+          await Whiteboard.deleteOne({ _id: wb._id });
+          deletedWhiteboardsCount++;
+        }
+
+        if (deletedBoardsCount > 0 || deletedWhiteboardsCount > 0) {
+          console.log(`[Cleanup] Deleted ${deletedBoardsCount} boards, ${deletedWhiteboardsCount} whiteboards`);
+        }
+      } catch (err) {
+        console.error('[Cleanup] Error during daily cleanup check:', err.message);
+      }
+    }, 24 * 60 * 60 * 1000); // Every 24 hours
   })
   .catch((err) => {
     console.error('[MongoDB] ❌  Connection failed:', err.message);

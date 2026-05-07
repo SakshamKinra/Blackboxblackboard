@@ -6,6 +6,7 @@
 
 const express = require('express');
 const router = express.Router();
+const upload = require('../middleware/upload');
 
 const {
   createBoard,
@@ -14,8 +15,8 @@ const {
 } = require('../controllers/boardController');
 
 // POST /api/boards
-// Create a new board with lock configuration.
-router.post('/', createBoard);
+// Create a new board with lock configuration and optional attachments.
+router.post('/', upload.array('images', 2), createBoard);
 
 // GET /api/boards/:id
 // Get board metadata (lock type, unlock date) — no content.

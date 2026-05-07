@@ -19,6 +19,27 @@
   --card:     #13132b;
   --text:     #f5ecd7;
   --muted:    #8878a8;
+  
+  --nav-bg:   rgba(13, 13, 26, 0.85);
+  --nav-text: #f5ecd7;
+  
+  --input-bg: #0d0d1a;
+  --input-border: rgba(201, 168, 76, 0.25);
+  --input-text: #f5ecd7;
+  --input-placeholder: #8878a8;
+  
+  --expiry-bg: rgba(237, 147, 177, 0.12);
+  --expiry-text: #ED93B1;
+  --expiry-border: transparent;
+  
+  --countdown-bg: #13132b;
+  --countdown-border: rgba(255, 255, 255, 0.05);
+  
+  --wb-toolbar-bg: #13132b;
+  --wb-toolbar-border: rgba(201, 168, 76, 0.2);
+  
+  --btn-danger-bg: rgba(237, 147, 177, 0.1);
+  --btn-danger-text: #ED93B1;
 }
 
 html.dark {
@@ -26,6 +47,27 @@ html.dark {
   --card:     #13132b;
   --text:     #f5ecd7;
   --muted:    #8878a8;
+  
+  --nav-bg:   rgba(13, 13, 26, 0.85);
+  --nav-text: #f5ecd7;
+
+  --input-bg: #0d0d1a;
+  --input-border: rgba(201, 168, 76, 0.25);
+  --input-text: #f5ecd7;
+  --input-placeholder: #8878a8;
+  
+  --expiry-bg: rgba(237, 147, 177, 0.12);
+  --expiry-text: #ED93B1;
+  --expiry-border: transparent;
+
+  --countdown-bg: #13132b;
+  --countdown-border: rgba(255, 255, 255, 0.05);
+
+  --wb-toolbar-bg: #13132b;
+  --wb-toolbar-border: rgba(201, 168, 76, 0.2);
+  
+  --btn-danger-bg: rgba(237, 147, 177, 0.1);
+  --btn-danger-text: #ED93B1;
 }
 
 /* Light mode overrides */
@@ -34,6 +76,27 @@ html:not(.dark) {
   --card:     #fff8f0;
   --text:     #2a1f0e;
   --muted:    #9a8878;
+  
+  --nav-bg:   rgba(253, 246, 238, 0.85);
+  --nav-text: #7a6a5a;
+  
+  --input-bg: #fff8f0;
+  --input-border: rgba(201, 168, 76, 0.4);
+  --input-text: #2a1f0e;
+  --input-placeholder: #b09880;
+  
+  --expiry-bg: #fff0f5;
+  --expiry-text: #2a1f0e;
+  --expiry-border: #ED93B1;
+  
+  --countdown-bg: #fdf6ee;
+  --countdown-border: rgba(201, 168, 76, 0.4);
+  
+  --wb-toolbar-bg: #fff8f0;
+  --wb-toolbar-border: rgba(201, 168, 76, 0.3);
+  
+  --btn-danger-bg: #ED93B1;
+  --btn-danger-text: #2a1f0e;
 }
 
 /* ─────────────────────────────────────────────
@@ -113,15 +176,15 @@ body {
 .bb-input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid rgba(201, 168, 76, 0.25);
+  border: 1px solid var(--input-border);
   padding: 0.7rem 1rem;
   font-size: 0.95rem;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
-  background-color: var(--bg);
-  color: var(--text);
+  background-color: var(--input-bg);
+  color: var(--input-text);
 }
-.bb-input::placeholder { color: var(--muted); }
+.bb-input::placeholder { color: var(--input-placeholder); }
 .bb-input:focus {
   border-color: #C9A84C;
   box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.15);
