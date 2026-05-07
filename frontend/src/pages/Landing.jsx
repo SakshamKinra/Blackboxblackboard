@@ -123,7 +123,8 @@ export default function Landing({ darkMode, toggleTheme }) {
         <div className="animate-on-scroll is-visible stagger-3 flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 relative z-10 w-full max-w-lg mx-auto">
           <button
             onClick={() => navigate('/create')}
-            className="w-full sm:w-auto btn-gold text-lg px-8 py-4 shadow-lg shadow-[#C9A84C]/20"
+            className="w-full sm:w-auto text-lg px-8 py-4 rounded-full font-bold shadow-lg shadow-[#C9A84C]/20 transition-all duration-300"
+            style={{ backgroundColor: '#C9A84C', color: '#0d0d1a' }}
           >
             ✨ Create a Board
           </button>
@@ -145,31 +146,31 @@ export default function Landing({ darkMode, toggleTheme }) {
         </div>
 
         {/* Admin Portal Card - Centered below CTA */}
-        <div className="relative mx-auto mt-12 animate-[float_6s_infinite] glass-card rounded-2xl p-6 shadow-2xl flex flex-col items-center justify-center border border-white/10 z-20 hover:scale-105 transition-transform duration-300 w-full max-w-sm">
+        <div className="relative mx-auto mt-12 animate-[float_6s_infinite] glass-card rounded-2xl p-6 shadow-2xl flex flex-col items-center justify-center border border-white/10 z-20 hover:scale-105 transition-transform duration-300 w-full max-w-sm" style={{ backgroundColor: darkMode ? '#13132b' : '#fff8f0' }}>
           <div className="text-4xl mb-3 opacity-80 select-none">🛡️</div>
-          <div className="text-xl font-bold bb-text mb-1">Admin Portal</div>
-          <div className="text-xs bb-muted mb-4 text-center max-w-[200px]">Manage boards, settings, and cleanup</div>
-          <button onClick={() => navigate('/admin')} className="btn-gold w-full py-2 text-sm">Login to Admin</button>
+          <div className="text-xl font-bold mb-1" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>Login</div>
+          <div className="text-xs mb-4 text-center max-w-[200px]" style={{ color: darkMode ? 'var(--muted)' : '#2a1f0e' }}>Manage boards, settings, and cleanup</div>
+          <button onClick={() => navigate('/admin')} className="btn-gold w-full py-2 text-sm">Login to access</button>
         </div>
       </section>
 
       {/* ── SECTION 2: Problem ────────────────────────────────── */}
       <section className="relative px-6 py-24 max-w-6xl mx-auto">
         <div className="grid md:grid-cols-3 gap-6">
-          <div className="animate-on-scroll glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]">
-            <div className="text-3xl font-mono opacity-80 font-bold mb-4 bb-muted">01</div>
-            <h3 className="text-xl font-bold bb-text mb-3">Wrong timing ruins everything</h3>
-            <p className="bb-muted leading-relaxed">You can't unsend a heartfelt message that landed at the wrong moment.</p>
+          <div className="animate-on-scroll glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]" style={{ backgroundColor: darkMode ? '#13132b' : '#fff8f0' }}>
+            <div className="text-3xl font-mono font-bold mb-4" style={{ color: darkMode ? '#8878a8' : '#b09880' }}>01</div>
+            <h3 className="text-xl font-bold mb-3" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>Wrong timing ruins everything</h3>
+            <p className="leading-relaxed" style={{ color: darkMode ? '#8878a8' : '#2a1f0e' }}>You can't unsend a heartfelt message that landed at the wrong moment.</p>
           </div>
-          <div className="animate-on-scroll stagger-1 glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]">
-            <div className="text-3xl font-mono opacity-80 font-bold mb-4 bb-muted">02</div>
-            <h3 className="text-xl font-bold bb-text mb-3">No anticipation, no magic</h3>
-            <p className="bb-muted leading-relaxed">Modern platforms show everything instantly. There's no build-up, no excitement.</p>
+          <div className="animate-on-scroll stagger-1 glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]" style={{ backgroundColor: darkMode ? '#13132b' : '#fff8f0' }}>
+            <div className="text-3xl font-mono font-bold mb-4" style={{ color: darkMode ? '#8878a8' : '#b09880' }}>02</div>
+            <h3 className="text-xl font-bold mb-3" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>No anticipation, no magic</h3>
+            <p className="leading-relaxed" style={{ color: darkMode ? '#8878a8' : '#2a1f0e' }}>Modern platforms show everything instantly. There's no build-up, no excitement.</p>
           </div>
-          <div className="animate-on-scroll stagger-2 glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]">
-            <div className="text-3xl font-mono opacity-80 font-bold mb-4 bb-muted">03</div>
-            <h3 className="text-xl font-bold bb-text mb-3">No space to react together</h3>
-            <p className="bb-muted leading-relaxed">Once someone sees your message, there's no shared space to respond and celebrate.</p>
+          <div className="animate-on-scroll stagger-2 glass-card rounded-2xl p-8 hover-lift border-l-4 border-l-[#C9A84C]" style={{ backgroundColor: darkMode ? '#13132b' : '#fff8f0' }}>
+            <div className="text-3xl font-mono font-bold mb-4" style={{ color: darkMode ? '#8878a8' : '#b09880' }}>03</div>
+            <h3 className="text-xl font-bold mb-3" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>No space to react together</h3>
+            <p className="leading-relaxed" style={{ color: darkMode ? '#8878a8' : '#2a1f0e' }}>Once someone sees your message, there's no shared space to respond and celebrate.</p>
           </div>
         </div>
       </section>
@@ -235,13 +236,13 @@ export default function Landing({ darkMode, toggleTheme }) {
         {/* Row 3 */}
         <div className="flex flex-col md:flex-row items-center gap-12 lg:gap-20">
           <div className="flex-1 w-full animate-on-scroll">
-            <div className="glass-card rounded-2xl p-6 relative overflow-hidden aspect-[4/3] flex flex-col bg-[var(--bg)]">
+            <div className="glass-card rounded-2xl p-6 relative overflow-hidden aspect-[4/3] flex flex-col bg-[var(--bg)]" style={{ backgroundColor: darkMode ? '#13132b' : '#fff8f0' }}>
               <div className="flex items-center gap-2 mb-4 border-b border-[#C9A84C]/10 pb-3">
                 <div className="w-3 h-3 rounded-full bg-[#ED93B1]"></div>
                 <div className="w-3 h-3 rounded-full bg-[#C9A84C]"></div>
                 <div className="w-3 h-3 rounded-full bg-[#AFA9EC]"></div>
               </div>
-              <div className="relative font-mono text-sm leading-relaxed bb-text opacity-90 h-full">
+              <div className="relative font-mono text-sm leading-relaxed h-full" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>
                 Happy birthday! So glad we could finally |
                 
                 {/* Simulated Cursors */}
@@ -354,16 +355,16 @@ export default function Landing({ darkMode, toggleTheme }) {
       </section>
 
       {/* ── SECTION 7: Footer ─────────────────────────────────── */}
-      <footer className="relative border-t border-[#C9A84C]/20 pt-16 pb-8 px-6" style={{ backgroundColor: 'rgba(var(--bg-rgb, 13,13,26), 0.5)' }}>
+      <footer className="relative border-t border-[#C9A84C]/20 pt-16 pb-8 px-6" style={{ backgroundColor: darkMode ? 'rgba(13,13,26,0.5)' : 'rgba(253,246,238,0.5)' }}>
         <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-12 mb-16">
           <div>
             <span className="text-2xl font-extrabold text-[#C9A84C] tracking-tight mb-4 inline-block select-none">
               ⬛ BlackBoard
             </span>
-            <p className="bb-muted max-w-xs mt-2">A digital vault for moments worth waiting for.</p>
+            <p className="max-w-xs mt-2" style={{ color: darkMode ? 'var(--muted)' : '#9a8878' }}>A digital vault for moments worth waiting for.</p>
           </div>
           <div>
-            <h4 className="bb-text font-semibold mb-6 uppercase tracking-wider text-sm">Links</h4>
+            <h4 className="font-semibold mb-6 uppercase tracking-wider text-sm" style={{ color: darkMode ? '#f5ecd7' : '#2a1f0e' }}>Links</h4>
             <ul className="space-y-3 text-sm font-medium" style={{ color: 'var(--nav-text)' }}>
               <li><button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-[#C9A84C] transition-colors">Home</button></li>
               <li><button onClick={() => navigate('/create')} className="hover:text-[#C9A84C] transition-colors">Create Board</button></li>
@@ -372,14 +373,14 @@ export default function Landing({ darkMode, toggleTheme }) {
             </ul>
           </div>
           <div>
-            <p className="bb-muted text-sm font-medium mb-4">Built with 🖤 for special moments</p>
+            <p className="text-sm font-medium mb-4" style={{ color: darkMode ? 'var(--muted)' : '#9a8878' }}>Built with 🖤 for special moments</p>
             <a href="/admin" className="text-[10px] text-[#8878a8]/30 hover:text-[#C9A84C] transition-colors uppercase tracking-widest">
               Admin Access
             </a>
           </div>
         </div>
         <div className="max-w-6xl mx-auto text-center border-t border-[#C9A84C]/10 pt-8">
-          <p className="text-xs bb-muted">© {new Date().getFullYear()} BlackBoard. All rights reserved.</p>
+          <p className="text-xs" style={{ color: darkMode ? 'var(--muted)' : '#9a8878' }}>© {new Date().getFullYear()} BlackBoard. All rights reserved.</p>
         </div>
       </footer>
     </div>

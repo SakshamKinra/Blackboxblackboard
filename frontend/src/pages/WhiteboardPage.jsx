@@ -18,7 +18,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   const [ctx, setCtx] = useState(null);
   const [socket, setSocket] = useState(null);
-  const [connected, setConnected] = useState(false);
   const [userCount, setUserCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,7 +54,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           setSocket(newSocket);
 
           newSocket.on('connect', () => {
-            setConnected(true);
             newSocket.emit('join_whiteboard', { whiteboardId: id });
           });
 
@@ -74,7 +72,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           newSocket.on('wb_undo', () => {
             setStrokes(prev => prev.slice(0, -1));
           });
-          newSocket.on('disconnect', () => setConnected(false));
 
           setLoading(false);
         }
@@ -110,10 +107,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     context.lineJoin = 'round';
     setCtx(context);
 
-    // Redraw existing strokes
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach(s => drawStrokeOnCanvas(s, context));
-
     const handleResize = () => {
       const r = parent.getBoundingClientRect();
       const tempCanvas = document.createElement('canvas');
@@ -139,7 +132,8 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [loading, error]); // intentionally not adding strokes to deps to avoid resetting ctx
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error]);
 
   // When strokes change due to UNDO, redraw all
   useEffect(() => {

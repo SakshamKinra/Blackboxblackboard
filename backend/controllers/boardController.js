@@ -28,6 +28,13 @@ const deleteImages = (imagesArray) => {
   });
 };
 
+// Evaluates expiry from activation timestamp + ttl hours.
+const hasBoardExpired = (board) => {
+  if (!board || !board.activatedAt) return false;
+  const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
+  return Date.now() > expiryTime;
+};
+
 // Number of bcrypt salt rounds — 10 is the standard balance
 // between security and performance.
 const SALT_ROUNDS = 10;
@@ -156,12 +163,9 @@ const getBoardStatus = async (req, res, next) => {
     }
 
     // Check if board has expired
-    if (board.activatedAt) {
-      const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
-      if (Date.now() > expiryTime && !board.isExpired) {
-        board.isExpired = true;
-        await board.save();
-      }
+    if (hasBoardExpired(board) && !board.isExpired) {
+      board.isExpired = true;
+      await board.save();
     }
 
     // Return only safe metadata — no content, no passwordHash.
@@ -198,6 +202,12 @@ const unlockBoard = async (req, res, next) => {
     }
 
     // ── Check expiration ────────────────────────────────────
+    // Recompute expiry here as well so direct unlock API calls
+    // cannot bypass expiration before another endpoint updates isExpired.
+    if (!board.isExpired && hasBoardExpired(board)) {
+      board.isExpired = true;
+      await board.save();
+    }
     if (board.isExpired) {
       return res.status(410).json({
         success: false,
