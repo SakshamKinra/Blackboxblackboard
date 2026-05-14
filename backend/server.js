@@ -51,10 +51,10 @@ const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       'https://blackboxblackboard.vercel.app',
-      'https://blackboxblackboard.vercel.app/',
       'http://localhost:3000'
     ];
-    if (!origin || allowedOrigins.some(o => origin.startsWith(o.replace(/\/$/, '')))) {
+    // Allow exact matches or undefined origin (for server-to-server/Postman)
+    if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -142,6 +142,66 @@ app.use((req, res) => {
 // Catches errors forwarded via next(err) from controllers.
 app.use(errorHandler);
 
+// ── Debounced DB Persistence ────────────────────────────────
+const pendingTextUpdates = new Map(); // boardId -> content
+const pendingStrokes = new Map();     // boardId -> array of strokes
+const pendingWbStrokes = new Map();   // whiteboardId -> array of strokes
+
+setInterval(async () => {
+  // Sync text updates
+  if (pendingTextUpdates.size > 0) {
+    const updates = new Map(pendingTextUpdates);
+    pendingTextUpdates.clear();
+    for (const [boardId, content] of updates.entries()) {
+      try {
+        await Board.updateOne({ boardId }, { content });
+      } catch (err) {
+        console.error(`[DB Sync] Error saving board ${boardId}:`, err.message);
+      }
+    }
+  }
+
+  // Sync board strokes
+  if (pendingStrokes.size > 0) {
+    const updates = new Map(pendingStrokes);
+    pendingStrokes.clear();
+    for (const [boardId, strokes] of updates.entries()) {
+      try {
+        const board = await Board.findOne({ boardId }, { whiteboardData: 1 });
+        if (board && Array.isArray(board.whiteboardData) && board.whiteboardData.length > 3000) {
+          // Limit reached: clear strokes but keep images
+          const images = board.whiteboardData.filter(item => item && item.type === 'image');
+          await Board.updateOne({ boardId }, { $set: { whiteboardData: [...images, ...strokes] } });
+        } else {
+          await Board.updateOne({ boardId }, { $push: { whiteboardData: { $each: strokes } } });
+        }
+      } catch (err) {
+        console.error(`[DB Sync] Error saving strokes for ${boardId}:`, err.message);
+      }
+    }
+  }
+
+  // Sync standalone whiteboard strokes
+  if (pendingWbStrokes.size > 0) {
+    const Whiteboard = require('./models/Whiteboard');
+    const updates = new Map(pendingWbStrokes);
+    pendingWbStrokes.clear();
+    for (const [whiteboardId, strokes] of updates.entries()) {
+      try {
+        const wb = await Whiteboard.findOne({ whiteboardId }, { strokes: 1 });
+        if (wb && Array.isArray(wb.strokes) && wb.strokes.length > 3000) {
+          await Whiteboard.updateOne({ whiteboardId }, { $set: { strokes: strokes } });
+        } else {
+          await Whiteboard.updateOne({ whiteboardId }, { $push: { strokes: { $each: strokes } } });
+        }
+      } catch (err) {
+        console.error(`[DB Sync] Error saving standalone strokes for ${whiteboardId}:`, err.message);
+      }
+    }
+  }
+}, 2000); // Save every 2 seconds
+
+
 // ── Socket.io — Real-time collaboration ─────────────────────
 // Each board gets its own Socket.io room identified by boardId.
 // Only clients that have successfully unlocked a board will
@@ -195,32 +255,17 @@ io.on('connection', (socket) => {
     if (!boardId) return;
     const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
 
-    try {
-      // Persist updated content to MongoDB.
-      await Board.findOneAndUpdate(
-        { boardId },
-        { content },
-        { new: true }          // return updated doc (not used here but good practice)
-      );
+    // Queue update for batch DB save
+    pendingTextUpdates.set(boardId, content);
 
-      // Broadcast to every OTHER socket in the room (not the sender).
-      // This prevents the sender from receiving its own echo.
-      socket.to(boardId).emit('receive_update', { boardId, content });
-      socket.to(boardId).emit('text_update_author', {
-        boardId,
-        content,
-        userName: author,
-        timestamp: Date.now(),
-      });
-
-      console.log(`[Socket.io] Content updated for board: ${boardId}`);
-    } catch (err) {
-      console.error(`[Socket.io] Error saving content for board ${boardId}:`, err.message);
-      // Notify the sender of the failure so the UI can handle it.
-      socket.emit('update_error', {
-        message: 'Failed to save content. Please try again.',
-      });
-    }
+    // Broadcast to every OTHER socket in the room immediately.
+    socket.to(boardId).emit('receive_update', { boardId, content });
+    socket.to(boardId).emit('text_update_author', {
+      boardId,
+      content,
+      userName: author,
+      timestamp: Date.now(),
+    });
   });
 
   socket.on('text_typing', ({ boardId, userName }) => {
@@ -245,12 +290,9 @@ io.on('connection', (socket) => {
   // ── Event: draw_stroke ────────────────────────────────────
   socket.on('draw_stroke', async ({ boardId, stroke }) => {
     if (!boardId || !stroke) return;
-    try {
-      await Board.updateOne({ boardId }, { $push: { whiteboardData: stroke } });
-      socket.to(boardId).emit('receive_stroke', stroke);
-    } catch (err) {
-      console.error(`[Socket.io] Error saving stroke:`, err.message);
-    }
+    if (!pendingStrokes.has(boardId)) pendingStrokes.set(boardId, []);
+    pendingStrokes.get(boardId).push(stroke);
+    socket.to(boardId).emit('receive_stroke', stroke);
   });
 
   // ── Event: clear_whiteboard ────────────────────────────────
@@ -336,12 +378,9 @@ io.on('connection', (socket) => {
 
   socket.on('wb_draw_stroke', async ({ whiteboardId, stroke }) => {
     if (!whiteboardId || !stroke) return;
-    try {
-      await Whiteboard.updateOne({ whiteboardId }, { $push: { strokes: stroke } });
-      socket.to(whiteboardId).emit('wb_receive_stroke', stroke);
-    } catch (err) {
-      console.error(`[Socket.io] Error saving standalone stroke:`, err.message);
-    }
+    if (!pendingWbStrokes.has(whiteboardId)) pendingWbStrokes.set(whiteboardId, []);
+    pendingWbStrokes.get(whiteboardId).push(stroke);
+    socket.to(whiteboardId).emit('wb_receive_stroke', stroke);
   });
 
   socket.on('wb_clear', async ({ whiteboardId }) => {

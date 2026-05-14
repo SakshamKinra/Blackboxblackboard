@@ -1,16 +1,19 @@
 // src/components/Countdown.jsx
 import React, { useState, useEffect } from 'react';
 
-export default function Countdown({ unlockAt }) {
-  const [timeLeft, setTimeLeft] = useState(getTimeLeft(unlockAt));
+export default function Countdown({ unlockAt, serverTime }) {
+  // offset is positive if client clock is AHEAD of server clock
+  const [offset] = useState(serverTime ? Date.now() - serverTime : 0);
+  const [timeLeft, setTimeLeft] = useState(getTimeLeft(unlockAt, offset));
 
   useEffect(() => {
-    const timer = setInterval(() => setTimeLeft(getTimeLeft(unlockAt)), 1000);
+    const timer = setInterval(() => setTimeLeft(getTimeLeft(unlockAt, offset)), 1000);
     return () => clearInterval(timer);
-  }, [unlockAt]);
+  }, [unlockAt, offset]);
 
-  function getTimeLeft(target) {
-    const diff = new Date(target) - new Date();
+  function getTimeLeft(target, currentOffset) {
+    const adjustedNow = Date.now() - currentOffset;
+    const diff = new Date(target).getTime() - adjustedNow;
     if (diff <= 0) return null;
     return {
       days:    Math.floor(diff / (1000 * 60 * 60 * 24)),

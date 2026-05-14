@@ -60,7 +60,7 @@ export default function LockScreen({ board, onUnlock }) {
 
       {needsDate && board.unlockAt && (
         <div className="mb-8 animate-fade-in">
-          <Countdown unlockAt={board.unlockAt} />
+          <Countdown unlockAt={board.unlockAt} serverTime={board.serverTime} />
         </div>
       )}
 

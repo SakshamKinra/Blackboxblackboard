@@ -14,6 +14,8 @@ export default function Editor({ boardId, initialContent, socket, connected, use
   const saveTimeout = useRef(null);
   const typingTimeout = useRef(null);
   const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+  const [cursorPos, setCursorPos] = useState(null);
 
   useEffect(() => {
     setContent(initialContent || '');
@@ -23,6 +25,9 @@ export default function Editor({ boardId, initialContent, socket, connected, use
     if (!socket) return;
 
     const handleReceiveUpdate = ({ content: incoming }) => {
+      if (textareaRef.current && document.activeElement === textareaRef.current) {
+        setCursorPos(textareaRef.current.selectionStart);
+      }
       setContent(incoming);
     };
 
@@ -58,6 +63,16 @@ export default function Editor({ boardId, initialContent, socket, connected, use
       socket.off('update_error', handleUpdateError);
     };
   }, [socket, displayName]);
+
+  // Restore cursor position after incoming update
+  useEffect(() => {
+    if (textareaRef.current && cursorPos !== null && document.activeElement === textareaRef.current) {
+      // Ensure we don't set cursor beyond new content length
+      const pos = Math.min(cursorPos, content.length);
+      textareaRef.current.setSelectionRange(pos, pos);
+      setCursorPos(null);
+    }
+  }, [content, cursorPos]);
 
   const handleChange = useCallback((e) => {
     const newContent = e.target.value;
@@ -150,6 +165,7 @@ export default function Editor({ boardId, initialContent, socket, connected, use
 
       <textarea
         id="board-editor"
+        ref={textareaRef}
         value={content}
         onChange={handleChange}
         placeholder="Start writing... everyone sees live updates with names."

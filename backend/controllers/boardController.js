@@ -195,6 +195,7 @@ const getBoardStatus = async (req, res, next) => {
       activatedAt: board.activatedAt,
       expiresAfter: board.expiresAfter,
       isExpired: board.isExpired,
+      serverTime: Date.now(), // Provide server time for accurate countdown sync
     });
   } catch (err) {
     next(err);
