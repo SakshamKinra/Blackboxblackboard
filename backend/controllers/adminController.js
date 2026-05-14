@@ -6,10 +6,13 @@
 // ============================================================
 
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
 const Board = require('../models/Board');
 const Whiteboard = require('../models/Whiteboard');
+
+let adminPasswordHash = null;
 
 // Utility to delete images from disk
 const deleteImages = (imagesArray) => {
@@ -56,7 +59,20 @@ const adminLogin = async (req, res, next) => {
       });
     }
 
-    if (email !== adminEmail || password !== adminPassword) {
+    if (email !== adminEmail) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password.',
+      });
+    }
+
+    if (!adminPasswordHash) {
+      adminPasswordHash = await bcrypt.hash(adminPassword, 10);
+    }
+
+    const isMatch = await bcrypt.compare(password, adminPasswordHash);
+
+    if (!isMatch) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.',
@@ -88,7 +104,7 @@ const adminLogin = async (req, res, next) => {
 const getAllBoards = async (req, res, next) => {
   try {
     const boards = await Board.find()
-      .select('boardId boardName unlockType createdAt activatedAt expiresAfter isExpired')
+      .select('-_id boardId boardName unlockType createdAt activatedAt expiresAfter isExpired')
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -184,7 +200,7 @@ const deleteAllBoards = async (req, res, next) => {
 const getAllWhiteboards = async (req, res, next) => {
   try {
     const whiteboards = await Whiteboard.find()
-      .select('whiteboardId title createdAt expiresAt')
+      .select('-_id whiteboardId title createdAt expiresAt')
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

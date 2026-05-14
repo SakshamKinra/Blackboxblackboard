@@ -90,6 +90,20 @@ io.use((socket, next) => {
 });
 const boardParticipants = new Map();
 const whiteboardParticipants = new Map();
+const socketRateLimits = new Map();
+
+const checkSocketRateLimit = (socketId) => {
+  const now = Date.now();
+  let data = socketRateLimits.get(socketId) || { count: 0, lastReset: now };
+  if (now - data.lastReset > 1000) {
+    data.count = 1;
+    data.lastReset = now;
+  } else {
+    data.count++;
+  }
+  socketRateLimits.set(socketId, data);
+  return data.count <= 50;
+};
 
 const normalizeName = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -304,6 +318,7 @@ io.on('connection', (socket) => {
 
   // ── Event: draw_stroke ────────────────────────────────────
   socket.on('draw_stroke', async ({ stroke }) => {
+    if (!checkSocketRateLimit(socket.id)) return;
     const boardId = socket.data.boardId;
     if (!boardId || !stroke) return;
     if (!pendingStrokes.has(boardId)) pendingStrokes.set(boardId, []);
@@ -398,6 +413,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('wb_draw_stroke', async ({ stroke }) => {
+    if (!checkSocketRateLimit(socket.id)) return;
     const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId || !stroke) return;
     if (!pendingWbStrokes.has(whiteboardId)) pendingWbStrokes.set(whiteboardId, []);
@@ -477,6 +493,7 @@ io.on('connection', (socket) => {
   // Fires automatically when a client closes the connection.
   // Socket.io removes the socket from all rooms automatically.
   socket.on('disconnect', () => {
+    socketRateLimits.delete(socket.id);
     const leftBoardName = removeParticipant(boardParticipants, socket.data.boardId, socket.id);
     if (socket.data.boardId && leftBoardName) {
       socket.to(socket.data.boardId).emit('user_left', { userName: leftBoardName });

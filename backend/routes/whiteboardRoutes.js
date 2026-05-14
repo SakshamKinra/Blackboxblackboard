@@ -34,7 +34,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     
-    const wb = await Whiteboard.findOne({ whiteboardId: id });
+    const wb = await Whiteboard.findOne({ whiteboardId: id }).select('-_id');
     if (!wb) {
       return res.status(404).json({ success: false, message: 'Whiteboard not found' });
     }
