@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const Whiteboard = require('../models/Whiteboard');
 
 // POST /api/whiteboards — create new whiteboard
@@ -43,6 +44,12 @@ router.get('/:id', async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Whiteboard has expired' });
     }
     
+    const wbToken = jwt.sign(
+      { whiteboardId: wb.whiteboardId },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     return res.status(200).json({
       success: true,
       whiteboard: {
@@ -52,7 +59,8 @@ router.get('/:id', async (req, res, next) => {
         images: wb.images,
         createdAt: wb.createdAt,
         expiresAt: wb.expiresAt
-      }
+      },
+      wbToken
     });
   } catch (err) {
     next(err);

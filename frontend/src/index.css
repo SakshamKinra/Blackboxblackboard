@@ -1,7 +1,11 @@
 /* ─────────────────────────────────────────────
    Google Fonts – Inter (must come BEFORE @tailwind)
 ───────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap');
+
+.font-playfair {
+  font-family: 'Playfair Display', serif;
+}
 
 /* ─────────────────────────────────────────────
    Tailwind base layers
@@ -141,6 +145,17 @@ body {
   background-clip: text;
 }
 
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+.animate-shimmer {
+  animation: shimmer 2.5s infinite linear;
+  background: linear-gradient(to right, rgba(201,168,76,0.05) 4%, rgba(201,168,76,0.15) 25%, rgba(201,168,76,0.05) 36%);
+  background-size: 1000px 100%;
+}
+
 /* ─────────────────────────────────────────────
    Gold glow button
 ───────────────────────────────────────────── */
@@ -150,6 +165,7 @@ body {
   font-weight: 700;
   border-radius: 12px;
   padding: 0.75rem 2rem;
+  min-height: 44px;
   transition: all 0.25s ease;
   box-shadow: 0 0 0 0 rgba(201, 168, 76, 0.4);
   cursor: pointer;
@@ -179,6 +195,7 @@ body {
   border: 1px solid var(--input-border);
   padding: 0.7rem 1rem;
   font-size: 0.95rem;
+  min-height: 48px;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
   background-color: var(--input-bg);

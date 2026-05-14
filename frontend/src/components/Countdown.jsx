@@ -39,17 +39,17 @@ export default function Countdown({ unlockAt, serverTime }) {
   ];
 
   return (
-    <div className="flex gap-3 justify-center flex-wrap">
+    <div className="flex gap-4 sm:gap-6 justify-center flex-wrap">
       {units.map(({ label, value }) => (
         <div
           key={label}
-          className="flex flex-col items-center rounded-xl px-4 py-3 min-w-[64px] shadow-lg border"
+          className="flex flex-col items-center rounded-xl px-5 py-4 min-w-[80px] shadow-lg border"
           style={{ backgroundColor: 'var(--countdown-bg)', borderColor: 'var(--countdown-border)' }}
         >
-          <span className="text-3xl font-extrabold text-[#C9A84C] tabular-nums">
+          <span className="text-4xl sm:text-5xl font-extrabold text-[#C9A84C] tabular-nums">
             {String(value).padStart(2, '0')}
           </span>
-          <span className="text-xs uppercase tracking-widest mt-1" style={{ color: 'var(--muted)' }}>{label}</span>
+          <span className="text-xs uppercase tracking-widest mt-2" style={{ color: 'var(--muted)' }}>{label}</span>
         </div>
       ))}
     </div>

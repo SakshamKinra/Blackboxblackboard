@@ -120,7 +120,7 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
       <div className="max-w-2xl mx-auto px-6 pt-28">
 
         <div className="mb-10 animate-fade-in">
-          <h1 className="text-4xl font-extrabold gradient-text mb-2">Create a Board</h1>
+          <h1 className="font-playfair text-4xl font-extrabold gradient-text mb-2">Create a Board</h1>
           <p className="bb-muted">Configure your lock, add initial content, and share the link.</p>
         </div>
 

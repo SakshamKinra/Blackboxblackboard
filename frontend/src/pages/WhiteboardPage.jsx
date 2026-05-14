@@ -61,7 +61,10 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           setImages(data.whiteboard.images);
 
           // Connect socket
-          newSocket = io(SOCKET_URL, { transports: ['websocket'] });
+          newSocket = io(SOCKET_URL, { 
+            transports: ['websocket'],
+            auth: { token: data.wbToken }
+          });
           setSocket(newSocket);
 
           newSocket.on('connect', () => {

@@ -13,6 +13,7 @@ const { Server } = require('socket.io');      // Socket.io v4 named export
 const mongoose = require('mongoose');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const jwt = require('jsonwebtoken');
 
 // ── Rate Limiting ───────────────────────────────────────────
 // Brute-force protection for sensitive endpoints.
@@ -71,6 +72,21 @@ app.options('*', cors(corsOptions));
 // Uses the same CORS config as Express.
 const io = new Server(httpServer, {
   cors: corsOptions,
+});
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    return next(new Error('Unauthorized'));
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.boardId) socket.data.boardId = decoded.boardId;
+    if (decoded.whiteboardId) socket.data.whiteboardId = decoded.whiteboardId;
+    next();
+  } catch (err) {
+    next(new Error('Unauthorized'));
+  }
 });
 const boardParticipants = new Map();
 const whiteboardParticipants = new Map();
@@ -213,8 +229,9 @@ io.on('connection', (socket) => {
   // Called by the frontend after a board is unlocked.
   // The client joins the room so it can send/receive updates.
   //
-  // Payload: { boardId: string }
-  socket.on('join_board', async ({ boardId, userName }) => {
+  // Payload: { userName: string }
+  socket.on('join_board', async ({ userName }) => {
+    const boardId = socket.data.boardId;
     if (!boardId) return;
     const normalizedName = normalizeName(userName);
     if (!normalizedName) {
@@ -250,8 +267,9 @@ io.on('connection', (socket) => {
   //   1. Persists the new content to MongoDB.
   //   2. Broadcasts it to ALL OTHER clients in the same room.
   //
-  // Payload: { boardId: string, content: string }
-  socket.on('text_update', async ({ boardId, content, userName }) => {
+  // Payload: { content: string }
+  socket.on('text_update', async ({ content, userName }) => {
+    const boardId = socket.data.boardId;
     if (!boardId) return;
     const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
 
@@ -268,27 +286,25 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('text_typing', ({ boardId, userName }) => {
+  socket.on('text_typing', ({ userName }) => {
+    const boardId = socket.data.boardId;
     if (!boardId) return;
     const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
     socket.to(boardId).emit('text_typing', { boardId, userName: author, timestamp: Date.now() });
   });
 
   // ── Event: image_added ──────────────────────────────────
-  // Sent when a user uploads an image to the text board.
-  // Broadcasts updated content with the image to all other users.
-  //
-  // Payload: { boardId: string, content: string, imageUrl: string }
-  socket.on('image_added', async ({ boardId, content, imageUrl, userName }) => {
+  socket.on('image_added', async ({ content, imageUrl, userName }) => {
+    const boardId = socket.data.boardId;
     if (!boardId) return;
     const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
-    // Broadcast the updated content with the image to other users
     socket.to(boardId).emit('image_added', { boardId, content, imageUrl, userName: author });
     console.log(`[Socket.io] Image added to board: ${boardId}`);
   });
 
   // ── Event: draw_stroke ────────────────────────────────────
-  socket.on('draw_stroke', async ({ boardId, stroke }) => {
+  socket.on('draw_stroke', async ({ stroke }) => {
+    const boardId = socket.data.boardId;
     if (!boardId || !stroke) return;
     if (!pendingStrokes.has(boardId)) pendingStrokes.set(boardId, []);
     pendingStrokes.get(boardId).push(stroke);
@@ -296,7 +312,8 @@ io.on('connection', (socket) => {
   });
 
   // ── Event: clear_whiteboard ────────────────────────────────
-  socket.on('clear_whiteboard', async ({ boardId }) => {
+  socket.on('clear_whiteboard', async () => {
+    const boardId = socket.data.boardId;
     if (!boardId) return;
     try {
       await Board.updateOne({ boardId }, { $set: { whiteboardData: [] } });
@@ -307,7 +324,8 @@ io.on('connection', (socket) => {
   });
 
   // ── Event: whiteboard_image_added ──────────────────────────
-  socket.on('whiteboard_image_added', async ({ boardId, image }) => {
+  socket.on('whiteboard_image_added', async ({ image }) => {
+    const boardId = socket.data.boardId;
     if (!boardId || !image) return;
     try {
       const board = await Board.findOne({ boardId });
@@ -324,7 +342,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('whiteboard_image_updated', async ({ boardId, image }) => {
+  socket.on('whiteboard_image_updated', async ({ image }) => {
+    const boardId = socket.data.boardId;
     if (!boardId || !image || !image.id) return;
     try {
       const board = await Board.findOne({ boardId });
@@ -340,7 +359,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('whiteboard_image_removed', async ({ boardId, imageId }) => {
+  socket.on('whiteboard_image_removed', async ({ imageId }) => {
+    const boardId = socket.data.boardId;
     if (!boardId || !imageId) return;
     try {
       const board = await Board.findOne({ boardId });
@@ -359,7 +379,8 @@ io.on('connection', (socket) => {
   // ==========================================================
   const Whiteboard = require('./models/Whiteboard');
 
-  socket.on('join_whiteboard', async ({ whiteboardId, userName }) => {
+  socket.on('join_whiteboard', async ({ userName }) => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId) return;
     const normalizedName = normalizeName(userName);
     if (!normalizedName) {
@@ -376,14 +397,16 @@ io.on('connection', (socket) => {
     io.to(whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, whiteboardId) });
   });
 
-  socket.on('wb_draw_stroke', async ({ whiteboardId, stroke }) => {
+  socket.on('wb_draw_stroke', async ({ stroke }) => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId || !stroke) return;
     if (!pendingWbStrokes.has(whiteboardId)) pendingWbStrokes.set(whiteboardId, []);
     pendingWbStrokes.get(whiteboardId).push(stroke);
     socket.to(whiteboardId).emit('wb_receive_stroke', stroke);
   });
 
-  socket.on('wb_clear', async ({ whiteboardId }) => {
+  socket.on('wb_clear', async () => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId) return;
     try {
       await Whiteboard.updateOne({ whiteboardId }, { $set: { strokes: [], images: [] } });
@@ -393,7 +416,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('wb_image_added', async ({ whiteboardId, image }) => {
+  socket.on('wb_image_added', async ({ image }) => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId || !image) return;
     try {
       const wb = await Whiteboard.findOne({ whiteboardId });
@@ -409,7 +433,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('wb_image_updated', async ({ whiteboardId, image }) => {
+  socket.on('wb_image_updated', async ({ image }) => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId || !image || !image.id) return;
     try {
       const wb = await Whiteboard.findOne({ whiteboardId });
@@ -422,7 +447,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('wb_image_removed', async ({ whiteboardId, imageId }) => {
+  socket.on('wb_image_removed', async ({ imageId }) => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId || !imageId) return;
     try {
       const wb = await Whiteboard.findOne({ whiteboardId });
@@ -435,7 +461,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('wb_undo', async ({ whiteboardId }) => {
+  socket.on('wb_undo', async () => {
+    const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId) return;
     try {
       // Remove the last stroke from the array using $pop: 1

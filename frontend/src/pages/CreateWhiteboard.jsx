@@ -57,10 +57,10 @@ export default function CreateWhiteboard({ darkMode, toggleTheme }) {
       {/* Form Container */}
       <div className="flex flex-col items-center justify-center min-h-screen pt-20 pb-12">
         <div className="w-full max-w-md animate-slide-up">
-          <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold bb-text mb-2">New Whiteboard</h1>
-            <p className="bb-muted text-sm">Create a real-time collaborative canvas.</p>
-          </div>
+          <div className="mb-10 animate-fade-in text-center">
+          <h1 className="font-playfair text-4xl font-extrabold gradient-text mb-2">Create a Whiteboard</h1>
+          <p className="bb-muted">Instantly create a shareable, real-time standalone whiteboard.</p>
+        </div>
 
           <form onSubmit={handleCreate} className="bb-card glass rounded-2xl p-8 space-y-6 shadow-xl border border-white/5">
             <div>

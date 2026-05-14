@@ -95,6 +95,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
   const [activatedAt,  setActivatedAt]  = useState(null);
   const [expiresAfter, setExpiresAfter] = useState(3);
   const [displayName, setDisplayName] = useState('');
+  const [boardToken,   setBoardToken]   = useState(null);
   
   const [activeTab,    setActiveTab]    = useState('text');
   const [socket,       setSocket]       = useState(null);
@@ -114,10 +115,10 @@ export default function BoardPage({ darkMode, toggleTheme }) {
           if (data.activatedAt) setActivatedAt(data.activatedAt);
           if (data.expiresAfter) setExpiresAfter(data.expiresAfter);
         } else {
-          setError('Board not found.');
+          setError('We couldn\'t find this board. The link may be invalid.');
         }
       } catch (err) {
-        setError(err.response?.status === 404 ? 'Board not found.' : 'Failed to load board.');
+        setError(err.response?.status === 404 ? 'We couldn\'t find this board. The link may be invalid.' : 'Something went wrong. Check your connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -125,7 +126,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
     fetchBoard();
   }, [id]);
 
-  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedDisplayName) {
+  function handleUnlocked(unlockedContent, unlockedBoardName, unlockedActivatedAt, unlockedExpiresAfter, unlockedDisplayName, unlockedBoardToken) {
     setContent(unlockedContent);
     setBoardName(unlockedBoardName || '');
     if (unlockedActivatedAt) setActivatedAt(unlockedActivatedAt);
@@ -134,13 +135,19 @@ export default function BoardPage({ darkMode, toggleTheme }) {
       setDisplayName(unlockedDisplayName);
       sessionStorage.setItem(`bb-name:${id}`, unlockedDisplayName);
     }
+    if (unlockedBoardToken) {
+      setBoardToken(unlockedBoardToken);
+    }
     setUnlocked(true);
   }
 
   useEffect(() => {
-    if (!unlocked) return;
+    if (!unlocked || !boardToken) return;
     
-    const newSocket = io(SOCKET_URL, { transports: ['websocket'] });
+    const newSocket = io(SOCKET_URL, { 
+      transports: ['websocket'],
+      auth: { token: boardToken }
+    });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
@@ -178,7 +185,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-[#C9A84C] font-semibold text-sm">Board</span>
                 {boardName && boardName !== 'Untitled Board' && (
-                  <span className="bb-text text-sm font-semibold">{boardName}</span>
+                  <span className="font-playfair bb-text text-lg font-semibold">{boardName}</span>
                 )}
                 <span className="bb-muted text-sm font-mono">{id}</span>
               </div>
@@ -198,10 +205,10 @@ export default function BoardPage({ darkMode, toggleTheme }) {
               </div>
             </div>
             <div className="flex-1 relative">
-              <div className={`absolute inset-0 flex flex-col ${activeTab === 'text' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
+              <div className={`absolute inset-0 flex flex-col transition-opacity duration-300 ${activeTab === 'text' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
                 <Editor boardId={id} initialContent={content} socket={socket} connected={connected} userCount={userCount} displayName={displayName} />
               </div>
-              <div className={`absolute inset-0 flex flex-col ${activeTab === 'whiteboard' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
+              <div className={`absolute inset-0 flex flex-col transition-opacity duration-300 ${activeTab === 'whiteboard' ? 'z-10 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'}`}>
                 <Whiteboard boardId={id} socket={socket} connected={connected} userCount={userCount} displayName={displayName} />
               </div>
             </div>
@@ -216,9 +223,16 @@ export default function BoardPage({ darkMode, toggleTheme }) {
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bb-bg flex flex-col items-center justify-center bb-muted gap-4">
-      <div className="w-10 h-10 border-4 border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
-      <p className="text-sm">Loading board…</p>
+    <div className="min-h-screen bb-bg flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-4">
+        {/* Simulating 3 card-shaped blocks */}
+        <div className="w-full h-32 rounded-xl animate-shimmer" />
+        <div className="w-full h-24 rounded-xl animate-shimmer" />
+        <div className="w-full h-16 rounded-xl animate-shimmer" />
+        <div className="flex justify-center pt-4">
+          <div className="w-8 h-8 border-4 border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
     </div>
   );
 }

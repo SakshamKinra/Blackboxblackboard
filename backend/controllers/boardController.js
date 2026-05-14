@@ -6,6 +6,7 @@
 
 const bcrypt = require('bcrypt');
 const { nanoid } = require('nanoid');
+const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 const Board = require('../models/Board');
@@ -175,7 +176,7 @@ const getBoardStatus = async (req, res, next) => {
     const board = await Board.findOne({ boardId: id });
 
     if (!board) {
-      return res.status(404).json({ success: false, message: 'Board not found' });
+      return res.status(404).json({ success: false, message: 'We couldn\'t find this board. The link may be invalid.' });
     }
 
     // Check if board has expired
@@ -215,7 +216,7 @@ const unlockBoard = async (req, res, next) => {
     const board = await Board.findOne({ boardId: id });
 
     if (!board) {
-      return res.status(404).json({ success: false, message: 'Board not found' });
+      return res.status(404).json({ success: false, message: 'We couldn\'t find this board. The link may be invalid.' });
     }
 
     // ── Check expiration ────────────────────────────────────
@@ -228,7 +229,7 @@ const unlockBoard = async (req, res, next) => {
     if (board.isExpired) {
       return res.status(410).json({
         success: false,
-        message: 'This board has expired.',
+        message: 'This moment has passed. The board is no longer available.',
         isExpired: true,
       });
     }
@@ -256,7 +257,7 @@ const unlockBoard = async (req, res, next) => {
           success: false,
           locked: true,
           reason: 'password',
-          message: 'Password is required to unlock this board',
+          message: 'Hmm, that doesn\'t seem right. Try again?',
         });
       }
 
@@ -267,7 +268,7 @@ const unlockBoard = async (req, res, next) => {
           success: false,
           locked: true,
           reason: 'password',
-          message: 'Incorrect password',
+          message: 'Hmm, that doesn\'t seem right. Try again?',
         });
       }
     }
@@ -277,6 +278,13 @@ const unlockBoard = async (req, res, next) => {
       board.activatedAt = new Date();
       await board.save();
     }
+
+    // ── Generate JWT for Socket Auth ──────────────────────────
+    const boardToken = jwt.sign(
+      { boardId: board.boardId },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
 
     // ── All conditions met — return full content ─────────────
     return res.status(200).json({
@@ -290,6 +298,7 @@ const unlockBoard = async (req, res, next) => {
       activatedAt: board.activatedAt,
       expiresAfter: board.expiresAfter,
       attachedImages: board.attachedImages,
+      boardToken,
     });
   } catch (err) {
     next(err);

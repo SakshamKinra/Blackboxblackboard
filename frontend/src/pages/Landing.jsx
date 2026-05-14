@@ -109,7 +109,7 @@ export default function Landing({ darkMode, toggleTheme }) {
         </div>
 
         {/* Headline */}
-        <h1 className="animate-on-scroll is-visible stagger-1 relative text-5xl md:text-7xl font-extrabold leading-tight mb-6 max-w-4xl mx-auto bb-text">
+        <h1 className="font-playfair animate-on-scroll is-visible stagger-1 relative text-5xl md:text-7xl font-extrabold leading-tight mb-6 max-w-4xl mx-auto bb-text">
           Lock your message.<br />
           <span className="text-[#C9A84C]">Unlock the moment.</span>
         </h1>
