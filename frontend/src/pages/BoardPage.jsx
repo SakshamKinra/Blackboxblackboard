@@ -163,7 +163,7 @@ export default function BoardPage({ darkMode, toggleTheme }) {
     newSocket.on('disconnect', () => setConnected(false));
 
     return () => newSocket.disconnect();
-  }, [unlocked, id, displayName]);
+  }, [unlocked, id, displayName, boardToken]);
 
   if (loading)   return <LoadingScreen />;
   if (isExpired) return <ExpiredScreen navigate={navigate} />;
