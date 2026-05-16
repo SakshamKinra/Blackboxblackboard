@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pen, Eraser, Trash2, Image as ImageIcon, Type } from 'lucide-react';
+import { Pen, Eraser, Trash2, Image as ImageIcon, Type, Undo2, Redo2 } from 'lucide-react';
+import ImageObject from './ImageObject';
+import TextObject from './TextObject';
 const API = process.env.REACT_APP_API_URL;
 
 export default function Whiteboard({ boardId, socket, connected, userCount, displayName }) {
@@ -15,9 +17,71 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const [images, setImages] = useState([]);
   const [activeImageId, setActiveImageId] = useState(null);
 
+  const [strokes, setStrokes] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const strokesRef = useRef([]);
+  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
+  const liveStrokesRef = useRef({});
+  const currentStrokeRef = useRef(null);
+
   const lastPos = useRef({ x: 0, y: 0 });
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000', '#ffffff'];
   const resolveImageSrc = (src) => (typeof src === 'string' && src.startsWith('/uploads/') ? `${API}${src}` : src);
+
+  const getCursor = () => {
+    if (toolType === 'eraser') {
+      const size = lineWidth * 2;
+      const svg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${lineWidth}" cy="${lineWidth}" r="${lineWidth}" fill="rgba(255,255,255,0.5)" stroke="black" stroke-width="1"/></svg>`);
+      return `url("data:image/svg+xml,${svg}") ${lineWidth} ${lineWidth}, auto`;
+    }
+    return 'crosshair';
+  };
+
+  const renderWhiteboard = (context, strokesList) => {
+    if (!context) return;
+    const canvas = context.canvas;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    strokesList.forEach(stroke => {
+      if (!stroke) return;
+      if (stroke.type === 'text') {
+        context.font = `${(stroke.size || stroke.lineWidth) * 2 + 10}px Inter`;
+        context.fillStyle = stroke.color;
+        context.textBaseline = 'top';
+        context.fillText(stroke.content, stroke.x, stroke.y);
+        return;
+      }
+      if (stroke.type === 'path' && stroke.points && stroke.points.length > 0) {
+        context.beginPath();
+        context.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          context.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        context.strokeStyle = stroke.color;
+        context.lineWidth = stroke.size || stroke.lineWidth;
+        context.globalCompositeOperation = stroke.tool === 'eraser' || stroke.isEraser ? 'destination-out' : 'source-over';
+        context.stroke();
+        context.globalCompositeOperation = 'source-over';
+      } else if (stroke.startX !== undefined) {
+        context.beginPath();
+        context.moveTo(stroke.startX, stroke.startY);
+        context.lineTo(stroke.endX, stroke.endY);
+        context.strokeStyle = stroke.color;
+        context.lineWidth = stroke.lineWidth || stroke.size;
+        context.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
+        context.stroke();
+        context.globalCompositeOperation = 'source-over';
+      }
+    });
+  };
+
+  const renderAllStrokes = () => {
+    if (!ctx) return;
+    const allStrokes = [...strokesRef.current, ...Object.values(liveStrokesRef.current)];
+    if (currentStrokeRef.current) allStrokes.push(currentStrokeRef.current);
+    renderWhiteboard(ctx, allStrokes);
+  };
+
+  useEffect(() => { renderAllStrokes(); }, [strokes, ctx]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,6 +106,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       ctxNew.scale(dpr, dpr);
       ctxNew.lineCap = 'round';
       ctxNew.lineJoin = 'round';
+      renderWhiteboard(ctxNew, [...strokesRef.current, ...Object.values(liveStrokesRef.current)]);
       setCtx(ctxNew);
     };
 
@@ -58,46 +123,37 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   useEffect(() => {
     if (!socket || !ctx) return;
 
-    const drawStrokeOnCanvas = (stroke) => {
-      if (stroke.type === 'text') {
-        ctx.font = `${stroke.lineWidth * 2 + 10}px Inter`;
-        ctx.fillStyle = stroke.color;
-        ctx.textBaseline = 'top';
-        ctx.fillText(stroke.content, stroke.x, stroke.y);
-        return;
-      }
-      ctx.beginPath();
-      ctx.moveTo(stroke.startX, stroke.startY);
-      ctx.lineTo(stroke.endX, stroke.endY);
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.lineWidth;
-      ctx.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
-      ctx.stroke();
-      ctx.globalCompositeOperation = 'source-over';
+    const handleReceiveSyncStroke = (stroke) => {
+      liveStrokesRef.current[stroke.id] = stroke;
+      renderAllStrokes();
     };
 
     const handleReceiveStroke = (stroke) => {
-      drawStrokeOnCanvas(stroke);
+      setStrokes(prev => [...prev, stroke]);
+      delete liveStrokesRef.current[stroke.id];
       if (stroke.userName && stroke.userName !== displayName) {
-        addActivity(stroke.userName, stroke.isEraser ? 'erased' : 'drew');
+        addActivity(stroke.userName, stroke.tool === 'eraser' || stroke.isEraser ? 'erased' : 'drew');
       }
     };
 
     const handleClear = () => {
-      const canvas = canvasRef.current;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setStrokes([]);
       setImages([]);
+      liveStrokesRef.current = {};
+      currentStrokeRef.current = null;
       addActivity('Someone', 'cleared the board');
     };
 
     const handleWhiteboardData = (data) => {
       setImages([]);
       const imageItems = [];
+      const strokeItems = [];
       data.forEach((item) => {
         if (item.type === 'image') imageItems.push(item);
-        else drawStrokeOnCanvas(item);
+        else strokeItems.push(item);
       });
       if (imageItems.length > 0) setImages(imageItems);
+      setStrokes(strokeItems);
     };
 
     const handleImageAdded = (image) => {
@@ -115,7 +171,9 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       setImages((prev) => prev.filter((img) => img.id !== imageId));
     };
 
+    socket.on('receive_sync_stroke', handleReceiveSyncStroke);
     socket.on('receive_stroke', handleReceiveStroke);
+    socket.on('receive_undo', () => setStrokes(prev => prev.slice(0, -1)));
     socket.on('clear_whiteboard', handleClear);
     socket.on('whiteboard_data', handleWhiteboardData);
     socket.on('whiteboard_image_added', handleImageAdded);
@@ -123,7 +181,9 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     socket.on('whiteboard_image_removed', handleImageRemoved);
 
     return () => {
+      socket.off('receive_sync_stroke', handleReceiveSyncStroke);
       socket.off('receive_stroke', handleReceiveStroke);
+      socket.off('receive_undo');
       socket.off('clear_whiteboard', handleClear);
       socket.off('whiteboard_data', handleWhiteboardData);
       socket.off('whiteboard_image_added', handleImageAdded);
@@ -152,8 +212,19 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       return;
     }
     if (textInput) submitText();
+    
+    setRedoStack([]);
+    currentStrokeRef.current = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      type: 'path',
+      tool: toolType,
+      color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
+      size: lineWidth,
+      points: [{ x, y }],
+      userName: displayName,
+    };
     setIsDrawing(true);
-    lastPos.current = { x, y };
+    renderAllStrokes();
   };
 
   const submitText = () => {
@@ -161,48 +232,57 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       setTextInput(null);
       return;
     }
-    const stroke = { type: 'text', x: textInput.x, y: textInput.y, content: textInput.value, color, lineWidth, userName: displayName };
-    ctx.font = `${stroke.lineWidth * 2 + 10}px Inter`;
-    ctx.fillStyle = stroke.color;
-    ctx.textBaseline = 'top';
-    ctx.fillText(stroke.content, stroke.x, stroke.y);
-    if (socket && socket.connected) socket.emit('draw_stroke', { boardId, stroke });
+    const textObj = { id: Date.now().toString(), type: 'text', x: textInput.x, y: textInput.y, content: textInput.value, color, size: lineWidth, userName: displayName };
+    setRedoStack([]);
+    setImages(prev => [...prev, textObj]);
+    if (socket && socket.connected) socket.emit('whiteboard_image_added', { boardId, image: textObj });
     setTextInput(null);
   };
 
   const draw = (e) => {
     e.preventDefault();
-    if (!isDrawing || !ctx) return;
+    if (!isDrawing || !ctx || !currentStrokeRef.current) return;
     const { x, y } = getCoordinates(e);
-    const stroke = {
-      type: 'stroke',
-      startX: lastPos.current.x,
-      startY: lastPos.current.y,
-      endX: x,
-      endY: y,
-      color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
-      lineWidth,
-      isEraser: toolType === 'eraser',
-      userName: displayName,
-    };
-    ctx.beginPath();
-    ctx.moveTo(stroke.startX, stroke.startY);
-    ctx.lineTo(stroke.endX, stroke.endY);
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.lineWidth;
-    ctx.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
-    ctx.stroke();
-    ctx.globalCompositeOperation = 'source-over';
-    if (socket && socket.connected) socket.emit('draw_stroke', { boardId, stroke });
-    lastPos.current = { x, y };
+    
+    currentStrokeRef.current.points.push({ x, y });
+    renderAllStrokes();
+
+    if (socket && socket.connected) socket.emit('draw_sync', { boardId, stroke: currentStrokeRef.current });
   };
 
-  const stopDrawing = () => setIsDrawing(false);
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    if (currentStrokeRef.current) {
+      const finalStroke = currentStrokeRef.current;
+      setStrokes(prev => [...prev, finalStroke]);
+      if (socket && socket.connected) {
+        socket.emit('draw_stroke', { boardId, stroke: finalStroke });
+      }
+      currentStrokeRef.current = null;
+    }
+    setIsDrawing(false);
+  };
+
+  const undoStroke = () => {
+    if (strokes.length === 0) return;
+    const lastStroke = strokes[strokes.length - 1];
+    setStrokes(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, lastStroke]);
+    if (socket && socket.connected) socket.emit('draw_undo', { boardId });
+  };
+
+  const redoStroke = () => {
+    if (redoStack.length === 0) return;
+    const stroke = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setStrokes(prev => [...prev, stroke]);
+    if (socket && socket.connected) socket.emit('draw_stroke', { boardId, stroke });
+  };
 
   const clearCanvas = () => {
     if (!ctx) return;
-    const canvas = canvasRef.current;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setStrokes([]);
+    setRedoStack([]);
     setImages([]);
     if (socket && socket.connected) socket.emit('clear_whiteboard', { boardId });
   };
@@ -220,32 +300,12 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     e.target.value = '';
   };
 
-  const onImagePointerDown = (e, img, mode = 'move') => {
-    e.stopPropagation();
-    setActiveImageId(img.id);
-    dragRef.current = { id: img.id, mode, startX: e.clientX, startY: e.clientY, image: img };
-  };
-
-  const onPointerMove = (e) => {
-    if (!dragRef.current) return;
-    const { id, mode, startX, startY, image } = dragRef.current;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    setImages((prev) => prev.map((img) => {
-      if (img.id !== id) return img;
-      if (mode === 'resize') {
-        return { ...img, width: Math.max(60, image.width + dx), height: Math.max(60, image.height + dy) };
-      }
-      return { ...img, x: image.x + dx, y: image.y + dy };
-    }));
-  };
-
-  const onPointerUp = () => {
-    if (!dragRef.current) return;
-    const { id } = dragRef.current;
-    const updated = images.find((img) => img.id === id);
-    if (updated && socket && socket.connected) socket.emit('whiteboard_image_updated', { boardId, image: { ...updated, userName: displayName } });
-    dragRef.current = null;
+  const updateImage = (id, newProps, sync = true) => {
+    setImages(prev => prev.map(img => img.id === id ? { ...img, ...newProps } : img));
+    if (sync && socket && socket.connected) {
+      const updated = { id, ...newProps, userName: displayName };
+      socket.emit('whiteboard_image_updated', { boardId, image: updated });
+    }
   };
 
   const removeImage = (imageId) => {
@@ -278,6 +338,12 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
           </div>
 
           <div className="flex items-center gap-2">
+            <button onClick={undoStroke} disabled={strokes.length === 0} className={`p-1.5 rounded-lg transition-colors ${strokes.length === 0 ? 'text-gray-600' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Undo">
+              <Undo2 size={16} />
+            </button>
+            <button onClick={redoStroke} disabled={redoStack.length === 0} className={`p-1.5 rounded-lg transition-colors ${redoStack.length === 0 ? 'text-gray-600' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Redo">
+              <Redo2 size={16} />
+            </button>
             <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/20 text-sm font-medium text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all">
               <ImageIcon size={16} /> Image
               <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
@@ -292,9 +358,6 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden bg-[var(--bg)] cursor-crosshair"
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
       >
         {/* Activity Feed Overlay */}
         <div className="absolute top-4 left-4 z-40 pointer-events-none flex flex-col gap-2">
@@ -307,16 +370,29 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
           ))}
         </div>
         {images.map((img) => (
-          <div key={img.id} className={`absolute z-20 ${activeImageId === img.id ? 'ring-2 ring-[#C9A84C]' : ''}`} style={{ left: img.x, top: img.y, width: img.width, height: img.height }}>
-            <img src={resolveImageSrc(img.src)} alt="Whiteboard Upload" className="w-full h-full rounded shadow-lg opacity-90 select-none cursor-move" onPointerDown={(e) => onImagePointerDown(e, img, 'move')} />
-            <button type="button" onClick={() => removeImage(img.id)} className="absolute -top-2 -right-2 w-5 h-5 text-[10px] bg-[#ED93B1] text-black rounded-full" title="Remove">x</button>
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-[#C9A84C] rounded-sm cursor-se-resize" onPointerDown={(e) => onImagePointerDown(e, img, 'resize')} />
-          </div>
+          img.type === 'text' ? (
+            <TextObject
+              key={img.id}
+              textObj={img}
+              updateText={updateImage}
+              removeText={removeImage}
+            />
+          ) : (
+            <ImageObject
+              key={img.id}
+              image={img}
+              updateImage={updateImage}
+              removeImage={removeImage}
+              resolveImageSrc={resolveImageSrc}
+            />
+          )
         ))}
 
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full z-10 touch-none"
+          style={{ cursor: getCursor() }}
+          onContextMenu={(e) => e.preventDefault()}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={stopDrawing}

@@ -4,7 +4,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { Pen, Eraser, Trash2, Undo, Maximize, Download, Image as ImageIcon, Copy, Check, Type } from 'lucide-react';
+import { Pen, Eraser, Trash2, Maximize, Download, Image as ImageIcon, Copy, Check, Type, Undo2, Redo2 } from 'lucide-react';
+import ImageObject from '../components/ImageObject';
+import TextObject from '../components/TextObject';
 
 const API = process.env.REACT_APP_API_URL;
 const SOCKET_URL = process.env.REACT_APP_API_URL;
@@ -37,6 +39,13 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const [joined, setJoined] = useState(false);
 
   const lastPos = useRef({ x: 0, y: 0 });
+  const currentStrokeRef = useRef(null);
+  const liveStrokesRef = useRef({});
+  const strokesRef = useRef([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
+
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000'];
 
   useEffect(() => {
@@ -72,17 +81,24 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           });
 
           newSocket.on('wb_user_joined', () => setUserCount(c => c + 1));
+          newSocket.on('wb_receive_sync_stroke', stroke => {
+            liveStrokesRef.current[stroke.id] = stroke;
+            renderAllStrokes();
+          });
           newSocket.on('wb_receive_stroke', stroke => {
             setStrokes(prev => [...prev, stroke]);
-            drawStrokeOnCanvas(stroke, canvasRef.current.getContext('2d'));
+            delete liveStrokesRef.current[stroke.id];
           });
           newSocket.on('wb_clear', () => {
             setStrokes([]);
+            setRedoStack([]);
             setImages([]);
-            const canvas = canvasRef.current;
-            if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+            liveStrokesRef.current = {};
+            currentStrokeRef.current = null;
           });
-          newSocket.on('wb_image_added', img => setImages(prev => [...prev, img]));
+          newSocket.on('wb_image_added', img => setImages(prev => [...prev.filter(i => i.id !== img.id), img]));
+          newSocket.on('wb_image_updated', img => setImages(prev => prev.map(i => i.id === img.id ? { ...i, ...img } : i)));
+          newSocket.on('wb_image_removed', ({ imageId }) => setImages(prev => prev.filter(i => i.id !== imageId)));
           newSocket.on('wb_undo', () => {
             setStrokes(prev => prev.slice(0, -1));
           });
@@ -136,11 +152,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       ctxNew.lineJoin = 'round';
 
       // Redraw all strokes to avoid pixelation
-      ctxNew.clearRect(0, 0, canvas.width, canvas.height);
-      setStrokes(prev => {
-        prev.forEach(s => drawStrokeOnCanvas(s, ctxNew));
-        return prev;
-      });
+      renderWhiteboard(ctxNew, [...strokesRef.current, ...Object.values(liveStrokesRef.current)]);
       setCtx(ctxNew);
     };
 
@@ -149,34 +161,59 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, error]);
 
-  // When strokes change due to UNDO, redraw all
-  useEffect(() => {
-    if (!ctx || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach(s => drawStrokeOnCanvas(s, ctx));
-  }, [strokes, ctx]);
-
-  function drawStrokeOnCanvas(stroke, context) {
+  const renderWhiteboard = (context, strokesList) => {
     if (!context) return;
+    const canvas = context.canvas;
+    context.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (stroke.type === 'text') {
-      context.font = `${stroke.lineWidth * 2 + 10}px Inter`;
-      context.fillStyle = stroke.color;
-      context.textBaseline = 'top';
-      context.fillText(stroke.content, stroke.x, stroke.y);
-      return;
+    strokesList.forEach(stroke => {
+      if (!stroke) return;
+      if (stroke.type === 'text') {
+        context.font = `${(stroke.size || stroke.lineWidth) * 2 + 10}px Inter`;
+        context.fillStyle = stroke.color;
+        context.textBaseline = 'top';
+        context.fillText(stroke.content, stroke.x, stroke.y);
+        return;
+      }
+
+      if (stroke.type === 'path' && stroke.points && stroke.points.length > 0) {
+        context.beginPath();
+        context.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          context.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        context.strokeStyle = stroke.color;
+        context.lineWidth = stroke.size || stroke.lineWidth;
+        context.globalCompositeOperation = stroke.tool === 'eraser' || stroke.isEraser ? 'destination-out' : 'source-over';
+        context.stroke();
+        context.globalCompositeOperation = 'source-over';
+      } else if (stroke.startX !== undefined) {
+        // Legacy support
+        context.beginPath();
+        context.moveTo(stroke.startX, stroke.startY);
+        context.lineTo(stroke.endX, stroke.endY);
+        context.strokeStyle = stroke.color;
+        context.lineWidth = stroke.lineWidth || stroke.size;
+        context.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
+        context.stroke();
+        context.globalCompositeOperation = 'source-over';
+      }
+    });
+  };
+
+  const renderAllStrokes = () => {
+    if (!ctx) return;
+    const allStrokes = [...strokesRef.current, ...Object.values(liveStrokesRef.current)];
+    if (currentStrokeRef.current) {
+      allStrokes.push(currentStrokeRef.current);
     }
+    renderWhiteboard(ctx, allStrokes);
+  };
 
-    context.beginPath();
-    context.moveTo(stroke.startX, stroke.startY);
-    context.lineTo(stroke.endX, stroke.endY);
-    context.strokeStyle = stroke.color;
-    context.lineWidth = stroke.lineWidth;
-    context.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
-    context.stroke();
-    context.globalCompositeOperation = 'source-over';
-  }
+  // When strokes change due to UNDO or other state updates, redraw all
+  useEffect(() => {
+    renderAllStrokes();
+  }, [strokes, ctx]);
 
   // Drawing Handlers
   const getCoordinates = (e) => {
@@ -201,8 +238,18 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     }
 
     if (textInput) submitText();
+    
+    setRedoStack([]);
+    currentStrokeRef.current = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      type: 'path',
+      tool: toolType,
+      color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
+      size: lineWidth,
+      points: [{ x, y }]
+    };
     setIsDrawing(true);
-    lastPos.current = { x, y };
+    renderAllStrokes();
   };
 
   const submitText = () => {
@@ -210,48 +257,38 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       setTextInput(null);
       return;
     }
-    const stroke = {
-      type: 'text',
-      x: textInput.x,
-      y: textInput.y,
-      content: textInput.value,
-      color: color,
-      lineWidth: lineWidth
-    };
-    drawStrokeOnCanvas(stroke, ctx);
-    setStrokes(prev => [...prev, stroke]);
-    if (socket && socket.connected) {
-      socket.emit('wb_draw_stroke', { whiteboardId: id, stroke });
-    }
+    const textObj = { id: Date.now().toString(), type: 'text', x: textInput.x, y: textInput.y, content: textInput.value, color, size: lineWidth, userName: displayName };
+    setRedoStack([]);
+    setImages(prev => [...prev, textObj]);
+    if (socket && socket.connected) socket.emit('wb_image_added', { whiteboardId: id, image: textObj });
     setTextInput(null);
   };
 
   const draw = (e) => {
     e.preventDefault();
-    if (!isDrawing || !ctx) return;
+    if (!isDrawing || !ctx || !currentStrokeRef.current) return;
     const { x, y } = getCoordinates(e);
 
-    const stroke = {
-      startX: lastPos.current.x,
-      startY: lastPos.current.y,
-      endX: x,
-      endY: y,
-      color: toolType === 'eraser' ? 'rgba(0,0,0,1)' : color,
-      lineWidth,
-      isEraser: toolType === 'eraser'
-    };
-
-    drawStrokeOnCanvas(stroke, ctx);
-    setStrokes(prev => [...prev, stroke]);
+    currentStrokeRef.current.points.push({ x, y });
+    renderAllStrokes();
 
     if (socket && socket.connected) {
-      socket.emit('wb_draw_stroke', { whiteboardId: id, stroke });
+      socket.emit('wb_draw_sync', { whiteboardId: id, stroke: currentStrokeRef.current });
     }
-
-    lastPos.current = { x, y };
   };
 
-  const stopDrawing = () => setIsDrawing(false);
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    if (currentStrokeRef.current) {
+      const finalStroke = currentStrokeRef.current;
+      setStrokes(prev => [...prev, finalStroke]);
+      if (socket && socket.connected) {
+        socket.emit('wb_draw_stroke', { whiteboardId: id, stroke: finalStroke });
+      }
+      currentStrokeRef.current = null;
+    }
+    setIsDrawing(false);
+  };
 
   // Tools
   const clearCanvas = () => {
@@ -260,14 +297,40 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     const canvas = canvasRef.current;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setStrokes([]);
+    setRedoStack([]);
     setImages([]);
     if (socket && socket.connected) socket.emit('wb_clear', { whiteboardId: id });
   };
 
   const undoStroke = () => {
     if (strokes.length === 0) return;
+    const lastStroke = strokes[strokes.length - 1];
     setStrokes(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, lastStroke]);
     if (socket && socket.connected) socket.emit('wb_undo', { whiteboardId: id });
+  };
+
+  const redoStroke = () => {
+    if (redoStack.length === 0) return;
+    const stroke = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setStrokes(prev => [...prev, stroke]);
+    if (socket && socket.connected) socket.emit('wb_draw_stroke', { whiteboardId: id, stroke });
+  };
+
+  const updateImage = (imageId, newProps, sync = true) => {
+    setImages(prev => prev.map(img => img.id === imageId ? { ...img, ...newProps } : img));
+    if (sync && socket && socket.connected) {
+      const updated = { id: imageId, ...newProps };
+      socket.emit('wb_image_updated', { whiteboardId: id, image: updated });
+    }
+  };
+
+  const removeImage = (imageId) => {
+    setImages(prev => prev.filter(img => img.id !== imageId));
+    if (socket && socket.connected) {
+      socket.emit('wb_image_removed', { whiteboardId: id, imageId });
+    }
   };
 
   const handleImageUpload = (e) => {
@@ -285,6 +348,15 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const getCursor = () => {
+    if (toolType === 'eraser') {
+      const size = lineWidth * 2;
+      const svg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${lineWidth}" cy="${lineWidth}" r="${lineWidth}" fill="rgba(255,255,255,0.5)" stroke="black" stroke-width="1"/></svg>`);
+      return `url("data:image/svg+xml,${svg}") ${lineWidth} ${lineWidth}, auto`;
+    }
+    return 'crosshair';
   };
 
   const toggleFullscreen = () => {
@@ -421,74 +493,75 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-center md:justify-between px-4 py-2 border-b z-20 shrink-0 overflow-x-auto"
-        style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setToolType('pen')} className={`p-2 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-white/5'}`} title="Pen">
-            <Pen size={18} />
-          </button>
-          <button onClick={() => setToolType('eraser')} className={`p-2 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-white/5'}`} title="Eraser">
-            <Eraser size={18} />
-          </button>
-          <button onClick={() => setToolType('text')} className={`p-2 rounded-lg transition-colors ${toolType === 'text' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-white/5'}`} title="Text">
-            <Type size={18} />
-          </button>
+      <div className="flex items-center justify-between px-4 py-2 border-b z-20 overflow-x-auto" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
+        <div className="flex items-center gap-4 shrink-0">
+          <div className="flex items-center gap-2 border-r border-[#C9A84C]/20 pr-4">
+            <button onClick={() => setToolType('pen')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Pen"><Pen size={18} /></button>
+            <button onClick={() => setToolType('eraser')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Eraser"><Eraser size={18} /></button>
+            <button onClick={() => setToolType('text')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'text' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Text"><Type size={18} /></button>
+            <input type="range" min="1" max="20" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="w-24 ml-2 accent-[#C9A84C]" title="Stroke width" />
+          </div>
 
-          <div className="w-px h-6 bg-white/10 mx-2"></div>
+          <div className="flex items-center gap-1.5 border-r border-[#C9A84C]/20 pr-4 hidden md:flex">
+            {palette.map(c => (
+              <button key={c} onClick={() => { setColor(c); if (toolType === 'eraser') setToolType('pen'); }} className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c && toolType !== 'eraser' ? 'scale-125 border-gray-400' : 'border-transparent'}`} style={{ backgroundColor: c }} title={c} />
+            ))}
+            <input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (toolType === 'eraser') setToolType('pen'); }} className="w-6 h-6 p-0 border-0 rounded cursor-pointer ml-1" />
+          </div>
 
-          {palette.map(c => (
-            <button
-              key={c}
-              onClick={() => { setColor(c); if (toolType === 'eraser') setToolType('pen'); }}
-              className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c && toolType !== 'eraser' ? 'scale-125 border-gray-400' : 'border-transparent'}`}
-              style={{ backgroundColor: c }}
-            />
-          ))}
-          <input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (toolType === 'eraser') setToolType('pen'); }} className="w-6 h-6 p-0 border-0 rounded cursor-pointer ml-1" />
-
-          <div className="w-px h-6 bg-white/10 mx-2"></div>
-
-          <input type="range" min="1" max="20" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="w-24 accent-[#C9A84C]" title="Stroke width" />
-        </div>
-
-        <div className="flex items-center gap-2 ml-4 md:ml-0">
-          <button onClick={undoStroke} className="p-2 rounded-lg text-gray-400 hover:bg-white/5 transition-colors" title="Undo">
-            <Undo size={18} />
-          </button>
-          <label className="cursor-pointer p-2 rounded-lg text-gray-400 hover:bg-white/5 transition-colors flex items-center" title="Upload Image">
-            <ImageIcon size={18} />
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-          </label>
-          <button onClick={downloadPNG} className="p-2 rounded-lg text-gray-400 hover:bg-white/5 transition-colors" title="Download PNG">
-            <Download size={18} />
-          </button>
-          <button onClick={clearCanvas} className="p-2 rounded-lg text-[#ED93B1] hover:bg-[#ED93B1]/10 transition-colors" title="Clear All">
-            <Trash2 size={18} />
-          </button>
-          <div className="w-px h-6 bg-white/10 mx-1"></div>
-          <button onClick={toggleFullscreen} className="p-2 rounded-lg text-gray-400 hover:bg-white/5 transition-colors" title="Fullscreen">
-            <Maximize size={18} />
-          </button>
+          <div className="flex items-center gap-2 border-r border-[#C9A84C]/20 pr-4">
+            <button onClick={undoStroke} disabled={strokes.length === 0} className={`p-1.5 rounded-lg transition-colors ${strokes.length === 0 ? 'text-gray-600' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Undo">
+              <Undo2 size={16} />
+            </button>
+            <button onClick={redoStroke} disabled={redoStack.length === 0} className={`p-1.5 rounded-lg transition-colors ${redoStack.length === 0 ? 'text-gray-600' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Redo">
+              <Redo2 size={16} />
+            </button>
+            <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/20 text-sm font-medium text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all">
+              <ImageIcon size={16} /> Image
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
+            <button onClick={clearCanvas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ED93B1]/40 text-sm font-medium text-[#ED93B1] hover:bg-[#ED93B1]/10 transition-all">
+              <Trash2 size={16} /> Clear
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button onClick={downloadPNG} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 text-sm font-medium text-gray-300 hover:bg-white/10 transition-all" title="Download PNG">
+              <Download size={16} /> Export
+            </button>
+            <button onClick={toggleFullscreen} className="p-1.5 rounded-lg text-gray-400 hover:bg-white/10 transition-colors" title="Fullscreen">
+              <Maximize size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ── Canvas Area ───────────────────────────────────────── */}
-      <div ref={containerRef} className="flex-1 relative overflow-hidden bg-[var(--bg)] cursor-crosshair">
+      <div ref={containerRef} className="flex-1 relative overflow-hidden bg-[var(--bg)]" onContextMenu={(e) => e.preventDefault()}>
 
-        {/* Render images as DOM elements underneath the canvas drawing layer */}
+        {/* Render images and text as DOM elements underneath the canvas drawing layer */}
         {images.map((img) => (
-          <img
-            key={img.id}
-            src={img.src}
-            alt="Upload"
-            className="absolute rounded shadow-lg pointer-events-none opacity-90"
-            style={{ left: img.x, top: img.y, width: img.width, height: img.height }}
-          />
+          img.type === 'text' ? (
+            <TextObject
+              key={img.id}
+              textObj={img}
+              updateText={updateImage}
+              removeText={removeImage}
+            />
+          ) : (
+            <ImageObject
+              key={img.id}
+              image={img}
+              updateImage={updateImage}
+              removeImage={removeImage}
+            />
+          )
         ))}
 
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full z-10 touch-none"
+          style={{ cursor: getCursor() }}
           onMouseDown={startDrawing}
           onMouseMove={draw}
           onMouseUp={stopDrawing}
@@ -517,7 +590,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
               outline: 'none',
               zIndex: 30,
               minWidth: '100px',
-              padding: '2px',
+              padding: '2px'
             }}
           />
         )}

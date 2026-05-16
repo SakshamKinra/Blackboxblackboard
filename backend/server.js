@@ -316,6 +316,14 @@ io.on('connection', (socket) => {
     console.log(`[Socket.io] Image added to board: ${boardId}`);
   });
 
+  // ── Event: draw_sync ──────────────────────────────────────
+  socket.on('draw_sync', ({ stroke }) => {
+    if (!checkSocketRateLimit(socket.id)) return;
+    const boardId = socket.data.boardId;
+    if (!boardId || !stroke) return;
+    socket.to(boardId).emit('receive_sync_stroke', stroke);
+  });
+
   // ── Event: draw_stroke ────────────────────────────────────
   socket.on('draw_stroke', async ({ stroke }) => {
     if (!checkSocketRateLimit(socket.id)) return;
@@ -324,6 +332,17 @@ io.on('connection', (socket) => {
     if (!pendingStrokes.has(boardId)) pendingStrokes.set(boardId, []);
     pendingStrokes.get(boardId).push(stroke);
     socket.to(boardId).emit('receive_stroke', stroke);
+  });
+
+  socket.on('draw_undo', async () => {
+    const boardId = socket.data.boardId;
+    if (!boardId) return;
+    try {
+      await Board.updateOne({ boardId }, { $pop: { whiteboardData: 1 } });
+      socket.to(boardId).emit('receive_undo');
+    } catch (err) {
+      console.error('[Socket.io] Error undoing board stroke:', err.message);
+    }
   });
 
   // ── Event: clear_whiteboard ────────────────────────────────
@@ -410,6 +429,13 @@ io.on('connection', (socket) => {
     socket.emit('joined_whiteboard', { whiteboardId });
     socket.to(whiteboardId).emit('wb_user_joined', { userName: normalizedName });
     io.to(whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, whiteboardId) });
+  });
+
+  socket.on('wb_draw_sync', ({ stroke }) => {
+    if (!checkSocketRateLimit(socket.id)) return;
+    const whiteboardId = socket.data.whiteboardId;
+    if (!whiteboardId || !stroke) return;
+    socket.to(whiteboardId).emit('wb_receive_sync_stroke', stroke);
   });
 
   socket.on('wb_draw_stroke', async ({ stroke }) => {
