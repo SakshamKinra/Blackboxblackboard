@@ -4,9 +4,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { Pen, Eraser, Trash2, Maximize, Download, Image as ImageIcon, Copy, Check, Type, Undo2, Redo2 } from 'lucide-react';
+import { Pen, Eraser, Trash2, Maximize, Download, Image as ImageIcon, Copy, Check, Type, Undo2, Redo2, Square, StickyNote as StickyIcon, Circle, Triangle } from 'lucide-react';
 import ImageObject from '../components/ImageObject';
 import TextObject from '../components/TextObject';
+import ShapeObject from '../components/ShapeObject';
+import StickyNote from '../components/StickyNote';
 
 const API = process.env.REACT_APP_API_URL;
 const SOCKET_URL = process.env.REACT_APP_API_URL;
@@ -29,10 +31,20 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#C9A84C');
   const [lineWidth, setLineWidth] = useState(3);
-  const [toolType, setToolType] = useState('pen'); // 'pen', 'eraser', 'text'
+  const [toolType, setToolType] = useState('pen'); // 'pen', 'eraser', 'text', 'shape', 'sticky'
   const [textInput, setTextInput] = useState(null);
   const [images, setImages] = useState([]);
   const [strokes, setStrokes] = useState([]);
+
+  // Shape tool state
+  const [shapeType, setShapeType] = useState('rect'); // rect | circle | triangle | diamond
+  const [showShapePicker, setShowShapePicker] = useState(false);
+  const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
+  const shapeButtonRef = useRef(null);
+  const shapeDraftRef = useRef(null); // { x, y, w, h } during drag
+  const [isDraftingShape, setIsDraftingShape] = useState(false);
+  const imagesRef = useRef([]);
+  useEffect(() => { imagesRef.current = images; }, [images]);
 
   const [copied, setCopied] = useState(false);
   const [displayName, setDisplayName] = useState('');
@@ -225,8 +237,54 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
+  // ── Ghost shape preview on canvas ───────────────────────────
+  const drawGhostShape = (draft) => {
+    if (!ctx || !draft) return;
+    renderAllStrokes(); // clear stale ghost first
+    const { x, y, w, h } = draft;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth || 2;
+    ctx.setLineDash([6, 4]);
+    ctx.globalAlpha = 0.7;
+    switch (shapeType) {
+      case 'circle':
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      case 'triangle': {
+        const ax = x + w / 2, ay = y;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(x + w, y + h);
+        ctx.lineTo(x, y + h);
+        ctx.closePath();
+        ctx.stroke();
+        break;
+      }
+      case 'diamond': {
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y);
+        ctx.lineTo(x + w, y + h / 2);
+        ctx.lineTo(x + w / 2, y + h);
+        ctx.lineTo(x, y + h / 2);
+        ctx.closePath();
+        ctx.stroke();
+        break;
+      }
+      default: // rect
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 4);
+        ctx.stroke();
+    }
+    ctx.restore();
+  };
+
   const startDrawing = (e) => {
     if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+    // Don't start drawing if we clicked on a DOM overlay object
+    if (e.target.closest && e.target.closest('[data-wb-object]')) return;
     e.preventDefault();
     if (!ctx) return;
     const { x, y } = getCoordinates(e);
@@ -234,6 +292,32 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     if (toolType === 'text') {
       if (textInput) submitText(); // submit previous
       setTextInput({ x, y, value: '' });
+      return;
+    }
+
+    // Sticky: place on click, no drag needed
+    if (toolType === 'sticky') {
+      if (textInput) submitText();
+      const stickyObj = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+        type: 'sticky',
+        x, y,
+        width: 240,
+        height: 180,
+        content: '',
+        color: '#fde68a',
+        userName: displayName.trim(),
+      };
+      setImages(prev => [...prev, stickyObj]);
+      if (socket && socket.connected) socket.emit('wb_image_added', { whiteboardId: id, image: stickyObj });
+      return;
+    }
+
+    // Shape: begin drag-to-size
+    if (toolType === 'shape') {
+      if (textInput) submitText();
+      shapeDraftRef.current = { x, y, w: 0, h: 0 };
+      setIsDraftingShape(true);
       return;
     }
 
@@ -266,6 +350,17 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   const draw = (e) => {
     e.preventDefault();
+
+    // Update shape ghost during drag
+    if (isDraftingShape && shapeDraftRef.current) {
+      const { x, y } = getCoordinates(e);
+      const anchor = shapeDraftRef.current;
+      anchor.w = x - anchor.x;
+      anchor.h = y - anchor.y;
+      drawGhostShape(anchor);
+      return;
+    }
+
     if (!isDrawing || !ctx || !currentStrokeRef.current) return;
     const { x, y } = getCoordinates(e);
 
@@ -278,6 +373,33 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   };
 
   const stopDrawing = () => {
+    // Commit shape draft
+    if (isDraftingShape && shapeDraftRef.current) {
+      const { x, y, w, h } = shapeDraftRef.current;
+      const minSize = 10;
+      if (Math.abs(w) > minSize && Math.abs(h) > minSize) {
+        const shapeObj = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          type: 'shape',
+          shapeType,
+          x: w < 0 ? x + w : x,
+          y: h < 0 ? y + h : y,
+          width: Math.abs(w),
+          height: Math.abs(h),
+          color,
+          fillColor: 'none',
+          strokeWidth: lineWidth,
+          userName: displayName.trim(),
+        };
+        setImages(prev => [...prev, shapeObj]);
+        if (socket && socket.connected) socket.emit('wb_image_added', { whiteboardId: id, image: shapeObj });
+      }
+      shapeDraftRef.current = null;
+      setIsDraftingShape(false);
+      renderAllStrokes(); // clear ghost
+      return;
+    }
+
     if (!isDrawing) return;
     if (currentStrokeRef.current) {
       const finalStroke = currentStrokeRef.current;
@@ -356,6 +478,8 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       const svg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${lineWidth}" cy="${lineWidth}" r="${lineWidth}" fill="rgba(255,255,255,0.5)" stroke="black" stroke-width="1"/></svg>`);
       return `url("data:image/svg+xml,${svg}") ${lineWidth} ${lineWidth}, auto`;
     }
+    if (toolType === 'sticky') return 'cell';
+    if (toolType === 'shape') return isDraftingShape ? 'crosshair' : 'crosshair';
     return 'crosshair';
   };
 
@@ -499,6 +623,32 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             <button onClick={() => setToolType('pen')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Pen"><Pen size={18} /></button>
             <button onClick={() => setToolType('eraser')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Eraser"><Eraser size={18} /></button>
             <button onClick={() => setToolType('text')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'text' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Text"><Type size={18} /></button>
+            {/* Shape tool with sub-picker */}
+            <div className="relative">
+              <button
+                ref={shapeButtonRef}
+                onClick={() => {
+                  setToolType('shape');
+                  if (shapeButtonRef.current) {
+                    const rect = shapeButtonRef.current.getBoundingClientRect();
+                    setPickerPos({ top: rect.bottom + 6, left: rect.left });
+                  }
+                  setShowShapePicker(v => !v);
+                }}
+                className={`p-1.5 rounded-lg transition-colors ${toolType === 'shape' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+                title="Shapes"
+              >
+                <Square size={18} />
+              </button>
+            </div>
+            {/* Sticky note tool */}
+            <button
+              onClick={() => setToolType('sticky')}
+              className={`p-1.5 rounded-lg transition-colors ${toolType === 'sticky' ? 'bg-[#fde68a]/20 text-[#b45309]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+              title="Sticky Note"
+            >
+              <StickyIcon size={18} />
+            </button>
             <input type="range" min="1" max="20" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="w-24 ml-2 accent-[#C9A84C]" title="Stroke width" />
           </div>
 
@@ -539,24 +689,41 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       {/* ── Canvas Area ───────────────────────────────────────── */}
       <div ref={containerRef} className="flex-1 relative overflow-hidden bg-[var(--bg)]" onContextMenu={(e) => e.preventDefault()}>
 
-        {/* Render images and text as DOM elements underneath the canvas drawing layer */}
-        {images.map((img) => (
-          img.type === 'text' ? (
+        {/* Render images, text, shapes, and stickies as DOM overlays */}
+        {images.map((img) => {
+          if (img.type === 'text') return (
             <TextObject
               key={img.id}
               textObj={img}
               updateText={updateImage}
               removeText={removeImage}
             />
-          ) : (
+          );
+          if (img.type === 'shape') return (
+            <ShapeObject
+              key={img.id}
+              shape={img}
+              updateShape={updateImage}
+              removeShape={removeImage}
+            />
+          );
+          if (img.type === 'sticky') return (
+            <StickyNote
+              key={img.id}
+              sticky={img}
+              updateSticky={updateImage}
+              removeSticky={removeImage}
+            />
+          );
+          return (
             <ImageObject
               key={img.id}
               image={img}
               updateImage={updateImage}
               removeImage={removeImage}
             />
-          )
-        ))}
+          );
+        })}
 
         <canvas
           ref={canvasRef}
@@ -595,6 +762,31 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           />
         )}
       </div>
+
+      {/* ── Shape picker portal (fixed to escape toolbar overflow:hidden) */}
+      {showShapePicker && (
+        <div
+          className="bg-[var(--card)] border border-[var(--input-border)] rounded-xl shadow-2xl p-2 flex gap-2 z-[200] animate-slide-up"
+          style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left }}
+        >
+          {[
+            ['rect', 'Rect', <Square size={16} key="r" />],
+            ['circle', 'Circle', <Circle size={16} key="c" />],
+            ['triangle', 'Triangle', <Triangle size={16} key="t" />],
+            ['diamond', 'Diamond', <Square size={16} key="d" style={{ transform: 'rotate(45deg)' }} />],
+          ].map(([st, label, icon]) => (
+            <button
+              key={st}
+              onClick={() => { setShapeType(st); setShowShapePicker(false); }}
+              className={`p-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${shapeType === st ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+              title={label}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
