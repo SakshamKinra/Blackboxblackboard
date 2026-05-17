@@ -21,13 +21,47 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
 
   const colorDef = STICKY_COLORS.find(c => c.bg === sticky.color) || STICKY_COLORS[0];
 
+  // ── Seed content ONCE on mount — never again via dangerouslySetInnerHTML ──
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.innerHTML = DOMPurify.sanitize(sticky.content || '');
+      // Measure the true height needed for the existing content
+      recalcHeight();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Apply remote content updates only when this sticky is NOT focused ──────
+  useEffect(() => {
+    if (contentRef.current && document.activeElement !== contentRef.current) {
+      contentRef.current.innerHTML = DOMPurify.sanitize(sticky.content || '');
+      recalcHeight();
+    }
+  }, [sticky.content]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Recalculate height from scrollHeight and persist if changed ────────────
+  const recalcHeight = () => {
+    if (!contentRef.current || !wrapperRef.current) return;
+    // Need wrapper to be at least as tall as header + content
+    const headerEl = wrapperRef.current.querySelector('[data-sticky-header]');
+    const headerH = headerEl ? headerEl.offsetHeight : 32;
+    const contentScrollH = contentRef.current.scrollHeight;
+    const minH = 160;
+    const newH = Math.max(minH, headerH + contentScrollH + 16); // 16px padding buffer
+    if (newH !== sticky.height) {
+      // Update DOM immediately so border matches
+      wrapperRef.current.style.height = `${newH}px`;
+      updateSticky(sticky.id, { height: newH }, false);
+    }
+  };
+
+  // ── Click-outside handler ─────────────────────────────────────────────────
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
         setIsActive(false);
-        // Save content on blur
         if (contentRef.current) {
           const cleanHTML = DOMPurify.sanitize(contentRef.current.innerHTML);
+          recalcHeight();
           updateSticky(sticky.id, { content: cleanHTML }, true);
           contentRef.current.blur();
         }
@@ -35,8 +69,9 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
     };
     if (isActive) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isActive, sticky.id, updateSticky]);
+  }, [isActive, sticky.id, updateSticky]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Drag / resize handlers ────────────────────────────────────────────────
   const onPointerDown = useCallback((e, mode) => {
     e.stopPropagation();
     if (mode === 'move') e.preventDefault();
@@ -111,8 +146,14 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
     document.removeEventListener('pointerup', onPointerUp);
   }, [sticky.id, updateSticky, onPointerMove]);
 
+  // ── Input handler — measures scrollHeight, expands wrapper, syncs ─────────
   const handleContentInput = () => {
     if (!contentRef.current) return;
+
+    // Expand wrapper height to fit content
+    recalcHeight();
+
+    // Throttled content sync
     const now = Date.now();
     if (now - lastEmitRef.current > THROTTLE_MS) {
       const cleanHTML = DOMPurify.sanitize(contentRef.current.innerHTML);
@@ -122,7 +163,7 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
   };
 
   const w = sticky.width || 240;
-  const h = sticky.height || 180;
+  const h = sticky.height || 160;
 
   return (
     <div
@@ -135,7 +176,7 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
     >
       {/* Sticky card */}
       <div
-        className="w-full h-full rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        className="w-full h-full rounded-xl shadow-2xl flex flex-col"
         style={{
           backgroundColor: colorDef.bg,
           boxShadow: isActive
@@ -143,11 +184,13 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
             : `0 4px 16px rgba(0,0,0,0.25), 4px 4px 0 rgba(0,0,0,0.08)`,
           transform: isActive ? 'scale(1.02)' : 'scale(1)',
           transition: 'box-shadow 0.15s, transform 0.15s',
+          overflow: 'visible',
         }}
       >
         {/* Drag header strip */}
         <div
-          className="flex items-center justify-between px-3 py-1.5 shrink-0 cursor-move"
+          data-sticky-header="true"
+          className="flex items-center justify-between px-3 py-1.5 shrink-0 cursor-move rounded-t-xl"
           style={{ backgroundColor: `${colorDef.bg}dd` }}
           onPointerDown={(e) => onPointerDown(e, 'move')}
         >
@@ -178,22 +221,25 @@ export default function StickyNote({ sticky, updateSticky, removeSticky }) {
           )}
         </div>
 
-        {/* Content area */}
+        {/* Content area — NO dangerouslySetInnerHTML, seeded once on mount */}
         <div
           ref={contentRef}
           contentEditable={isActive}
           suppressContentEditableWarning
           onInput={handleContentInput}
-          dangerouslySetInnerHTML={{ __html: sticky.content || '' }}
           onClick={(e) => { e.stopPropagation(); setIsActive(true); }}
-          className="flex-1 px-3 py-2 outline-none overflow-y-auto text-sm leading-relaxed break-words"
+          className="px-3 py-2 outline-none text-sm leading-relaxed"
           style={{
             color: colorDef.text,
             cursor: isActive ? 'text' : 'default',
             fontFamily: "'Caveat', 'Patrick Hand', cursive, sans-serif",
             fontSize: '15px',
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'pre-wrap',
+            // No fixed height — grows naturally with content
+            minHeight: '80px',
           }}
-          placeholder="Add a note…"
         />
 
         {/* Placeholder text when empty and not active */}

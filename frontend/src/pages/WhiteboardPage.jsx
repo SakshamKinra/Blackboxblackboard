@@ -43,6 +43,8 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const shapeButtonRef = useRef(null);
   const shapeDraftRef = useRef(null); // { x, y, w, h } during drag
   const [isDraftingShape, setIsDraftingShape] = useState(false);
+  const [selectedFontSize, setSelectedFontSize] = useState(18); // Default: Medium (18px)
+  const [activeTextId, setActiveTextId] = useState(null);
   const imagesRef = useRef([]);
   useEffect(() => { imagesRef.current = images; }, [images]);
 
@@ -53,9 +55,12 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const currentStrokeRef = useRef(null);
   const liveStrokesRef = useRef({});
   const strokesRef = useRef([]);
+  const socketRef = useRef(null);          // mirror of socket state for beforeunload
+  const unpersistedStrokesRef = useRef([]); // strokes emitted but not yet flushed to DB
   const [redoStack, setRedoStack] = useState([]);
 
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
+  useEffect(() => { socketRef.current = socket; }, [socket]);
 
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000'];
 
@@ -124,7 +129,19 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
     init();
 
+    // Flush any buffered strokes immediately when the tab/window closes
+    const handleBeforeUnload = () => {
+      const sock = socketRef.current;
+      const pending = unpersistedStrokesRef.current;
+      if (sock && sock.connected && pending.length > 0) {
+        sock.emit('wb_flush_strokes', { whiteboardId: id, strokes: pending });
+        unpersistedStrokesRef.current = [];
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       if (newSocket) newSocket.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,7 +359,20 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       setTextInput(null);
       return;
     }
-    const textObj = { id: Date.now().toString(), type: 'text', x: textInput.x, y: textInput.y, content: textInput.value, color, size: lineWidth, userName: displayName };
+    const textObj = {
+      id: Date.now().toString(),
+      type: 'text',
+      x: textInput.x,
+      y: textInput.y,
+      content: textInput.value,
+      color,
+      size: lineWidth,
+      fontSize: selectedFontSize,
+      width: 200,
+      height: 36,
+      userName: displayName,
+      authorName: localStorage.getItem('bb_user_name') || 'Anonymous'
+    };
     setRedoStack([]);
     setImages(prev => [...prev, textObj]);
     if (socket && socket.connected) socket.emit('wb_image_added', { whiteboardId: id, image: textObj });
@@ -406,7 +436,14 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       const finalStroke = currentStrokeRef.current;
       setStrokes(prev => [...prev, finalStroke]);
       if (socket && socket.connected) {
-        socket.emit('wb_draw_stroke', { whiteboardId: id, stroke: finalStroke });
+        // Track stroke as unpersisted until the server acknowledges it
+        unpersistedStrokesRef.current = [...unpersistedStrokesRef.current, finalStroke];
+        socket.emit('wb_draw_stroke', { whiteboardId: id, stroke: finalStroke }, () => {
+          // Acknowledgement callback: remove from unpersisted list
+          unpersistedStrokesRef.current = unpersistedStrokesRef.current.filter(
+            s => s.id !== finalStroke.id
+          );
+        });
       }
       currentStrokeRef.current = null;
     }
@@ -618,11 +655,11 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b z-20 overflow-x-auto" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
+      <div data-wb-toolbar="true" className="flex items-center justify-between px-4 py-2 border-b z-20 overflow-x-auto whiteboard-toolbar" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
         <div className="flex items-center gap-4 shrink-0">
           <div className="flex items-center gap-2 border-r border-[#C9A84C]/20 pr-4">
-            <button onClick={() => setToolType('pen')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Pen"><Pen size={18} /></button>
-            <button onClick={() => setToolType('eraser')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Eraser"><Eraser size={18} /></button>
+            <button onClick={() => { setToolType('pen'); setActiveTextId(null); }} className={`p-1.5 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Pen"><Pen size={18} /></button>
+            <button onClick={() => { setToolType('eraser'); setActiveTextId(null); }} className={`p-1.5 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Eraser"><Eraser size={18} /></button>
             <button onClick={() => setToolType('text')} className={`p-1.5 rounded-lg transition-colors ${toolType === 'text' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Text"><Type size={18} /></button>
             {/* Shape tool with sub-picker */}
             <div className="relative">
@@ -630,6 +667,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
                 ref={shapeButtonRef}
                 onClick={() => {
                   setToolType('shape');
+                  setActiveTextId(null);
                   if (shapeButtonRef.current) {
                     const rect = shapeButtonRef.current.getBoundingClientRect();
                     setPickerPos({ top: rect.bottom + 6, left: rect.left });
@@ -644,13 +682,34 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             </div>
             {/* Sticky note tool */}
             <button
-              onClick={() => setToolType('sticky')}
+              onClick={() => { setToolType('sticky'); setActiveTextId(null); }}
               className={`p-1.5 rounded-lg transition-colors ${toolType === 'sticky' ? 'bg-[#fde68a]/20 text-[#b45309]' : 'text-gray-400 hover:bg-gray-700/30'}`}
               title="Sticky Note"
             >
               <StickyIcon size={18} />
             </button>
             <input type="range" min="1" max="20" value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="w-24 ml-2 accent-[#C9A84C]" title="Stroke width" />
+            {toolType === 'text' && (
+              <div className="flex items-center gap-1.5 ml-2 border-l border-[#C9A84C]/20 pl-2">
+                <span className="text-xs text-gray-400 font-medium">Font Size:</span>
+                <select
+                  value={selectedFontSize}
+                  onChange={(e) => {
+                    const newSize = Number(e.target.value);
+                    setSelectedFontSize(newSize);
+                    if (activeTextId) {
+                      updateImage(activeTextId, { fontSize: newSize }, true);
+                    }
+                  }}
+                  className="bg-[var(--card)] border border-[var(--input-border)] rounded-lg text-xs text-gray-300 px-2 py-1 outline-none cursor-pointer"
+                >
+                  <option value={14}>Small (14px)</option>
+                  <option value={18}>Medium (18px)</option>
+                  <option value={24}>Large (24px)</option>
+                  <option value={32}>XL (32px)</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 border-r border-[#C9A84C]/20 pr-4 hidden md:flex">
@@ -698,6 +757,8 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
               textObj={img}
               updateText={updateImage}
               removeText={removeImage}
+              activeTextId={activeTextId}
+              setActiveTextId={setActiveTextId}
             />
           );
           if (img.type === 'shape') return (

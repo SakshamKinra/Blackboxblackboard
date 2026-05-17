@@ -447,6 +447,40 @@ io.on('connection', (socket) => {
     socket.to(whiteboardId).emit('wb_receive_stroke', stroke);
   });
 
+  // ── Event: wb_flush_strokes ────────────────────────────────
+  // Called by the frontend on beforeunload to immediately persist
+  // any strokes that are still in the pending buffer.
+  // Uses an acknowledgement callback so the client knows it landed.
+  socket.on('wb_flush_strokes', async ({ strokes: flushStrokes }, ack) => {
+    const whiteboardId = socket.data.whiteboardId;
+    if (!whiteboardId || !Array.isArray(flushStrokes) || flushStrokes.length === 0) {
+      if (typeof ack === 'function') ack({ ok: false });
+      return;
+    }
+    try {
+      const Whiteboard = require('./models/Whiteboard');
+      // Remove these strokes from the pending buffer to avoid double-persist
+      if (pendingWbStrokes.has(whiteboardId)) {
+        const flushIds = new Set(flushStrokes.map(s => s.id));
+        const remaining = pendingWbStrokes.get(whiteboardId).filter(s => !flushIds.has(s.id));
+        if (remaining.length === 0) {
+          pendingWbStrokes.delete(whiteboardId);
+        } else {
+          pendingWbStrokes.set(whiteboardId, remaining);
+        }
+      }
+      // Immediately persist to MongoDB
+      await Whiteboard.updateOne(
+        { whiteboardId },
+        { $push: { strokes: { $each: flushStrokes } } }
+      );
+      if (typeof ack === 'function') ack({ ok: true });
+    } catch (err) {
+      console.error(`[Socket.io] Error flushing strokes for ${whiteboardId}:`, err.message);
+      if (typeof ack === 'function') ack({ ok: false });
+    }
+  });
+
   socket.on('wb_clear', async () => {
     const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId) return;
