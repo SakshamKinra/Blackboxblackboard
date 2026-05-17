@@ -109,7 +109,7 @@ export default function ImageObject({ image, updateImage, removeImage, resolveIm
     dragRef.current = null;
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
-  }, [updateImage, image.id]);
+  }, [updateImage, image.id, onPointerMove]);
 
 
   return (

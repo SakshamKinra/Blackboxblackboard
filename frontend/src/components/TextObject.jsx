@@ -76,7 +76,7 @@ export default function TextObject({ textObj, updateText, removeText }) {
     dragRef.current = null;
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
-  }, [updateText, textObj.id]);
+  }, [updateText, textObj.id, onPointerMove]);
 
   const handleInput = () => {
     if (!contentRef.current) return;

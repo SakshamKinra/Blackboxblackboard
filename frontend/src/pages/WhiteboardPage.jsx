@@ -50,7 +50,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const [displayName, setDisplayName] = useState('');
   const [joined, setJoined] = useState(false);
 
-  const lastPos = useRef({ x: 0, y: 0 });
   const currentStrokeRef = useRef(null);
   const liveStrokesRef = useRef({});
   const strokesRef = useRef([]);
@@ -128,6 +127,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     return () => {
       if (newSocket) newSocket.disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, joined, displayName]);
 
   // Setup Canvas
@@ -223,9 +223,10 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   };
 
   // When strokes change due to UNDO or other state updates, redraw all
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     renderAllStrokes();
-  }, [strokes, ctx]);
+  }, [strokes, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Drawing Handlers
   const getCoordinates = (e) => {

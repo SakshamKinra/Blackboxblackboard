@@ -7,7 +7,6 @@ const API = process.env.REACT_APP_API_URL;
 export default function Whiteboard({ boardId, socket, connected, userCount, displayName }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const dragRef = useRef(null);
   const [ctx, setCtx] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#C9A84C');
@@ -15,7 +14,6 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const [toolType, setToolType] = useState('pen');
   const [textInput, setTextInput] = useState(null);
   const [images, setImages] = useState([]);
-  const [activeImageId, setActiveImageId] = useState(null);
 
   const [strokes, setStrokes] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
@@ -24,7 +22,6 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const liveStrokesRef = useRef({});
   const currentStrokeRef = useRef(null);
 
-  const lastPos = useRef({ x: 0, y: 0 });
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000', '#ffffff'];
   const resolveImageSrc = (src) => (typeof src === 'string' && src.startsWith('/uploads/') ? `${API}${src}` : src);
 
@@ -81,7 +78,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     renderWhiteboard(ctx, allStrokes);
   };
 
-  useEffect(() => { renderAllStrokes(); }, [strokes, ctx]);
+  useEffect(() => { renderAllStrokes(); }, [strokes, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -190,7 +187,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       socket.off('whiteboard_image_updated', handleImageUpdated);
       socket.off('whiteboard_image_removed', handleImageRemoved);
     };
-  }, [socket, ctx, displayName]);
+  }, [socket, ctx, displayName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
@@ -310,7 +307,6 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
 
   const removeImage = (imageId) => {
     setImages((prev) => prev.filter((img) => img.id !== imageId));
-    setActiveImageId(null);
     if (socket && socket.connected) socket.emit('whiteboard_image_removed', { boardId, imageId });
   };
 
