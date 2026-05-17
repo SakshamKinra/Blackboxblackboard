@@ -9,6 +9,7 @@ const API = process.env.REACT_APP_API_URL;
 export default function Whiteboard({ boardId, socket, connected, userCount, displayName }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+
   const [ctx, setCtx] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#C9A84C');
@@ -16,22 +17,26 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const [toolType, setToolType] = useState('pen');
   const [textInput, setTextInput] = useState(null);
   const [images, setImages] = useState([]);
-
   const [strokes, setStrokes] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [activeTextId, setActiveTextId] = useState(null);
+
+  // Shape tool state
   const [shapeType, setShapeType] = useState('rect');
   const [showShapePicker, setShowShapePicker] = useState(false);
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
   const [selectedFontSize, setSelectedFontSize] = useState(18);
+  const [activeTextId, setActiveTextId] = useState(null);
   const [isDraftingShape, setIsDraftingShape] = useState(false);
-  const strokesRef = useRef([]);
-  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
-  const liveStrokesRef = useRef({});
+  const [redoStack, setRedoStack] = useState([]);
+
   const currentStrokeRef = useRef(null);
+  const liveStrokesRef = useRef({});
+  const strokesRef = useRef([]);
   const shapeButtonRef = useRef(null);
   const shapeDraftRef = useRef(null);
   const imagesRef = useRef([]);
+  const unpersistedStrokesRef = useRef([]);
+
+  useEffect(() => { strokesRef.current = strokes; }, [strokes]);
   useEffect(() => { imagesRef.current = images; }, [images]);
 
   const palette = ['#C9A84C', '#ED93B1', '#AFA9EC', '#f5ecd7', '#000000', '#ffffff'];
@@ -95,6 +100,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     if (!context) return;
     const canvas = context.canvas;
     context.clearRect(0, 0, canvas.width, canvas.height);
+
     strokesList.forEach(stroke => {
       if (!stroke) return;
       if (stroke.type === 'text') {
@@ -104,6 +110,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
         context.fillText(stroke.content, stroke.x, stroke.y);
         return;
       }
+
       if (stroke.type === 'path' && stroke.points && stroke.points.length > 0) {
         context.beginPath();
         context.moveTo(stroke.points[0].x, stroke.points[0].y);
@@ -116,6 +123,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
         context.stroke();
         context.globalCompositeOperation = 'source-over';
       } else if (stroke.startX !== undefined) {
+        // Legacy support
         context.beginPath();
         context.moveTo(stroke.startX, stroke.startY);
         context.lineTo(stroke.endX, stroke.endY);
@@ -131,19 +139,29 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const renderAllStrokes = () => {
     if (!ctx) return;
     const allStrokes = [...strokesRef.current, ...Object.values(liveStrokesRef.current)];
-    if (currentStrokeRef.current) allStrokes.push(currentStrokeRef.current);
+    if (currentStrokeRef.current) {
+      allStrokes.push(currentStrokeRef.current);
+    }
     renderWhiteboard(ctx, allStrokes);
   };
 
-  useEffect(() => { renderAllStrokes(); }, [strokes, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
+  // When strokes change due to UNDO or other state updates, redraw all
+  useEffect(() => {
+    renderAllStrokes();
+  }, [strokes, ctx]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Setup Canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const parent = containerRef.current;
+    const rect = parent.getBoundingClientRect();
+
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
+
     const context = canvas.getContext('2d');
     context.scale(dpr, dpr);
     context.lineCap = 'round';
@@ -151,15 +169,20 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     setCtx(context);
 
     const handleResize = () => {
-      const parent = containerRef.current;
-      if (!parent) return;
       const r = parent.getBoundingClientRect();
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      tempCanvas.getContext('2d').drawImage(canvas, 0, 0);
+
       canvas.width = r.width * dpr;
       canvas.height = r.height * dpr;
       const ctxNew = canvas.getContext('2d');
       ctxNew.scale(dpr, dpr);
       ctxNew.lineCap = 'round';
       ctxNew.lineJoin = 'round';
+
+      // Redraw all strokes to avoid pixelation
       renderWhiteboard(ctxNew, [...strokesRef.current, ...Object.values(liveStrokesRef.current)]);
       setCtx(ctxNew);
     };
@@ -192,6 +215,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
 
     const handleClear = () => {
       setStrokes([]);
+      setRedoStack([]);
       setImages([]);
       liveStrokesRef.current = {};
       currentStrokeRef.current = null;
@@ -349,6 +373,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   };
 
   const stopDrawing = () => {
+    // Commit shape draft
     if (isDraftingShape && shapeDraftRef.current) {
       const { x, y, w, h } = shapeDraftRef.current;
       const minSize = 10;
@@ -371,15 +396,23 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       }
       shapeDraftRef.current = null;
       setIsDraftingShape(false);
-      renderAllStrokes();
+      renderAllStrokes(); // clear ghost
       return;
     }
+
     if (!isDrawing) return;
     if (currentStrokeRef.current) {
       const finalStroke = currentStrokeRef.current;
       setStrokes(prev => [...prev, finalStroke]);
       if (socket && socket.connected) {
-        socket.emit('draw_stroke', { boardId, stroke: finalStroke });
+        // Track stroke as unpersisted until the server acknowledges it
+        unpersistedStrokesRef.current = [...unpersistedStrokesRef.current, finalStroke];
+        socket.emit('draw_stroke', { boardId, stroke: finalStroke }, () => {
+          // Acknowledgement callback: remove from unpersisted list
+          unpersistedStrokesRef.current = unpersistedStrokesRef.current.filter(
+            s => s.id !== finalStroke.id
+          );
+        });
       }
       currentStrokeRef.current = null;
     }
@@ -413,10 +446,14 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const handleImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (event) => {
-      const imgData = { type: 'image', src: event.target.result, x: 50, y: 50, width: 300, height: 200, id: Date.now().toString(), userName: displayName };
-      setImages((prev) => [...prev, imgData]);
+      const base64 = event.target.result;
+      const imgData = {
+        src: base64, x: 50, y: 50, width: 200, height: 200, id: Date.now().toString(), userName: displayName.trim()
+      };
+      setImages(prev => [...prev, imgData]);
       if (socket && socket.connected) socket.emit('whiteboard_image_added', { boardId, image: imgData });
     };
     reader.readAsDataURL(file);
@@ -511,6 +548,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
             {palette.map(c => (
               <button key={c} onClick={() => { setColor(c); if (toolType === 'eraser') setToolType('pen'); }} className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c && toolType !== 'eraser' ? 'scale-125 border-gray-400' : 'border-transparent'}`} style={{ backgroundColor: c }} title={c} />
             ))}
+            <input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (toolType === 'eraser') setToolType('pen'); }} className="w-6 h-6 p-0 border-0 rounded cursor-pointer ml-1" />
           </div>
 
           <div className="flex items-center gap-2">
@@ -607,6 +645,31 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
             onBlur={submitText}
             style={{ position: 'absolute', left: textInput.x, top: textInput.y, color, font: `${lineWidth * 2 + 10}px Inter`, background: 'transparent', border: '1px dashed #C9A84C', outline: 'none', zIndex: 30, minWidth: '100px', padding: '2px' }}
           />
+        )}
+
+        {/* Shape picker portal (fixed to escape toolbar overflow:hidden) */}
+        {showShapePicker && (
+          <div
+            className="bg-[var(--card)] border border-[var(--input-border)] rounded-xl shadow-2xl p-2 flex gap-2 z-50"
+            style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left }}
+          >
+            {[
+              ['rect', 'Rect', <Square size={16} key="r" />],
+              ['circle', 'Circle', <Circle size={16} key="c" />],
+              ['triangle', 'Triangle', <Triangle size={16} key="t" />],
+              ['diamond', 'Diamond', <span key="d" style={{ fontSize: '18px' }}>◇</span>],
+            ].map(([st, label, icon]) => (
+              <button
+                key={st}
+                onClick={() => { setShapeType(st); setShowShapePicker(false); }}
+                className={`p-2 rounded-lg flex flex-col items-center gap-1 text-[10px] font-medium transition-colors ${shapeType === st ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+                title={label}
+              >
+                {icon}
+                {label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>

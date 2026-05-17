@@ -533,7 +533,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Create temp canvas to merge background, images, and strokes
+    // Create temp canvas to merge background and strokes
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
@@ -543,30 +543,14 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     tCtx.fillStyle = darkMode ? '#13132b' : '#fff8f0';
     tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-    // Draw images
-    const drawImages = () => {
-      return Promise.all(images.map(imgData => {
-        return new Promise(resolve => {
-          const img = new Image();
-          img.src = imgData.src;
-          img.onload = () => {
-            const dpr = window.devicePixelRatio || 1;
-            tCtx.drawImage(img, imgData.x * dpr, imgData.y * dpr, imgData.width * dpr, imgData.height * dpr);
-            resolve();
-          };
-        });
-      }));
-    };
+    // Draw strokes (already includes images rendered on canvas)
+    tCtx.drawImage(canvas, 0, 0);
 
-    drawImages().then(() => {
-      // Draw strokes
-      tCtx.drawImage(canvas, 0, 0);
-
-      const link = document.createElement('a');
-      link.download = `${title || 'Whiteboard'}.png`;
-      link.href = tempCanvas.toDataURL('image/png');
-      link.click();
-    });
+    // Download the image
+    const link = document.createElement('a');
+    link.download = `${title || 'Whiteboard'}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
+    link.click();
   };
 
   const copyLink = () => {
