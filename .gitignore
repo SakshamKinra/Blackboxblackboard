@@ -1,0 +1,28 @@
+## Root .gitignore for Blackboxblackboard-1
+
+# Node modules
+node_modules/
+/**/node_modules/
+
+# Environment files (never commit secrets)
+.env
+*.env
+
+# Frontend build output
+frontend/build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+
+# Editor directories
+.vscode/
+.idea/
+
+# Generated maps and bundles
+*.log
+*.map
