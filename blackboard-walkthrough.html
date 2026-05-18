@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlackBoard Project Walkthrough</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d1a;
+      --surface: #151524;
+      --border: rgba(201, 168, 76, 0.15);
+      --gold: #C9A84C;
+      --text: #f5ecd7;
+      --muted: rgba(245, 236, 215, 0.45);
+      --pink: #ED93B1;
+      --lavender: #AFA9EC;
+      --mint: #6EC9A8;
+      --coral: #E8956D;
+      --card: #18182d;
+      --input-border: rgba(245, 236, 215, 0.1);
+      --sidebar-bg: rgba(13,13,26,0.95);
+      --nav-bg: rgba(13,13,26,0.92);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: linear-gradient(180deg, #0d0d1a 0%, #0b0b13 100%);
+      font-family: 'Inter', sans-serif;
+      line-height: 1.7;
+    }
+
+    a {
+      color: var(--gold);
+      text-decoration: none;
+    }
+
+    .page-shell {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 240px;
+      bottom: 0;
+      padding: 32px 18px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid rgba(255,255,255,0.05);
+      overflow-y: auto;
+      z-index: 20;
+    }
+
+    .sidebar h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      margin: 0 0 16px;
+      color: var(--gold);
+    }
+
+    .sidebar nav a {
+      display: block;
+      margin: 6px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      transition: all 0.18s ease;
+    }
+
+    .sidebar nav a:hover {
+      color: var(--text);
+      background: rgba(201,168,76,0.08);
+    }
+
+    .sidebar nav a.active {
+      color: var(--gold);
+      background: rgba(201,168,76,0.12);
+      border-left: 3px solid var(--gold);
+      padding-left: 9px;
+    }
+
+    .main {
+      padding: 32px 48px 48px 280px;
+      position: relative;
+    }
+
+    .section {
+      margin-bottom: 56px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .section h1,
+    .section h2,
+    .section h3,
+    .section h4 {
+      font-family: 'Playfair Display', serif;
+      color: var(--text);
+      margin: 0 0 20px;
+    }
+
+    .section h1 {
+      font-size: 36px;
+      margin-bottom: 18px;
+    }
+
+    .section h2 {
+      font-size: 28px;
+      margin-top: 32px;
+    }
+
+    .section h3 {
+      font-size: 22px;
+      margin-top: 26px;
+    }
+
+    .section h4 {
+      font-size: 18px;
+      margin-top: 20px;
+    }
+
+    .section-title {
+      border-left: 4px solid var(--gold);
+      padding-left: 16px;
+      margin-bottom: 24px;
+    }
+
+    p {
+      max-width: 860px;
+      margin: 0 0 18px;
+      color: var(--text);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0 28px;
+      font-size: 14px;
+    }
+
+    table th,
+    table td {
+      border: 1px solid rgba(201,168,76,0.1);
+      padding: 12px 14px;
+      vertical-align: top;
+    }
+
+    table th {
+      background: rgba(201,168,76,0.1);
+      font-weight: 700;
+      text-align: left;
+    }
+
+    table tr:nth-child(odd) {
+      background: rgba(201,168,76,0.03);
+    }
+
+    .code-block {
+      position: relative;
+      background: #0a0a16;
+      border: 1px solid rgba(201,168,76,0.2);
+      border-radius: 12px;
+      padding: 18px;
+      margin: 24px 0;
+      overflow: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .code-block button.copy-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px;
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.18s ease;
+      z-index: 2;
+    }
+
+    .code-block button.copy-btn:hover {
+      background: rgba(255,255,255,0.14);
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .code-keyword { color: var(--lavender); }
+    .code-string { color: var(--mint); }
+    .code-comment { color: rgba(245,236,215,0.35); }
+    .code-number { color: var(--coral); }
+    .code-function { color: var(--gold); }
+    .code-default { color: var(--text); }
+
+    .details {
+      margin: 20px 0;
+      border: 1px solid rgba(201,168,76,0.18);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+    }
+
+    .details summary {
+      padding: 16px 18px;
+      cursor: pointer;
+      color: var(--gold);
+      font-weight: 700;
+      list-style: none;
+      position: relative;
+    }
+
+    .details summary::marker { content: ''; }
+    .details summary::before {
+      content: '▸';
+      position: absolute;
+      left: 18px;
+      transform-origin: center;
+      transition: transform 0.2s ease;
+    }
+    .details[open] summary::before { transform: rotate(90deg); }
+
+    .details .content {
+      padding: 0 18px 18px 18px;
+      color: var(--text);
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin: 22px 0;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(201,168,76,0.14);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    }
+
+    .card h3 {
+      margin-top: 0;
+      color: var(--gold);
+      font-size: 18px;
+    }
+
+    .cheat-sheet {
+      background: #111128;
+      border: 1px solid var(--gold);
+      border-radius: 24px;
+      padding: 28px;
+      margin-top: 36px;
+    }
+
+    .cheat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .cheat-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .cheat-list li {
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .progress-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: rgba(255,255,255,0.08);
+      z-index: 30;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--gold);
+      width: 0%;
+      transition: width 0.1s ease;
+    }
+
+    @media (max-width: 1024px) {
+      .page-shell { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; width: 100%; height: auto; max-height: 320px; top: 0; padding-bottom: 20px; }
+      .main { padding: 32px 24px 48px 24px; }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { padding-left: 24px; padding-right: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="page-shell">
+    <aside class="sidebar" id="sidebar">
+      <h2>BlackBoard Walkthrough</h2>
+      <nav>
+        <a href="#section-1" class="active">1 — Project Identity</a>
+        <a href="#section-1-1">1.1 What is BlackBoard?</a>
+        <a href="#section-1-2">1.2 Core Value Proposition</a>
+        <a href="#section-1-3">1.3 Feature Overview</a>
+        <a href="#section-2">2 — Tech Stack Deep Dive</a>
+        <a href="#section-2-1">2.1 Frontend</a>
+        <a href="#section-2-2">2.2 Backend</a>
+        <a href="#section-2-3">2.3 Infrastructure</a>
+        <a href="#section-3">3 — Architecture Walkthrough</a>
+        <a href="#section-3-1">3.1 ASCII Diagram</a>
+        <a href="#section-3-2">3.2 Frontend Architecture</a>
+        <a href="#section-3-3">3.3 Backend Architecture</a>
+        <a href="#section-3-4">3.4 Unified Object System</a>
+        <a href="#section-3-5">3.5 Real-Time Sync</a>
+        <a href="#section-3-6">3.6 State Philosophy</a>
+        <a href="#section-3-7">3.7 Coordinate System</a>
+        <a href="#section-4">4 — Feature Breakdown</a>
+        <a href="#section-4-1">4.1 Pen/Drawing</a>
+        <a href="#section-4-2">4.2 Text Objects</a>
+        <a href="#section-4-3">4.3 Shapes</a>
+        <a href="#section-4-4">4.4 Sticky Notes</a>
+        <a href="#section-4-5">4.5 Undo/Redo</a>
+        <a href="#section-4-6">4.6 Zoom/Pan</a>
+        <a href="#section-4-7">4.7 Presence</a>
+        <a href="#section-4-8">4.8 Cursor Presence</a>
+        <a href="#section-4-9">4.9 Rich Text Editor</a>
+        <a href="#section-4-10">4.10 Command Palette</a>
+        <a href="#section-4-11">4.11 Soft Delete</a>
+        <a href="#section-4-12">4.12 Attribution Labels</a>
+        <a href="#section-5">5 — Architecture Critique</a>
+        <a href="#section-6">6 — Difficulties & Decisions</a>
+        <a href="#section-7">7 — Viva Q&A</a>
+        <a href="#section-8">8 — Glossary</a>
+        <a href="#section-9">9 — Quick Reference Cards</a>
+        <a href="#section-10">10 — Cheat Sheet</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <section id="section-1" class="section">
+        <div class="section-title"><h1>SECTION 1 — Project Identity</h1></div>
+        <section id="section-1-1">
+          <h2>1.1 — What is BlackBoard?</h2>
+          <p>BlackBoard is a hybrid collaborative workspace that combines a text editor and a shared whiteboard into a single accessible web app. It is designed for quick group thinking, ad hoc planning, and lightweight collaboration without forcing users through heavy account creation or first-time onboarding.</p>
+          <p>The product solves the problem of scattered collaboration tools: users should not have to switch between a note document, a drawing surface, and a chat window to sketch ideas. Instead, BlackBoard gives students, educators, solo creators, and small teams a unified destination for structured writing and freehand visual thinking.</p>
+          <p>The target user is a learner or sharer who wants immediate frictionless collaboration: a study group sketching a concept map, a teacher distributing a timed interactive board, or a small team exporting a rough diagram. It fills a gap between tools such as Figma, Notion, Miro, and Google Docs by prioritizing instant link-based access, simple interface, and a lightweight web deployment.</p>
+          <p>This project exists because real-time collaboration is most valuable when it is easy to start. BlackBoard trades enterprise complexity for a simple, fast shared canvas that can be created and joined with a single link.</p>
+        </section>
+
+        <section id="section-1-2">
+          <h2>1.2 — The Core Value Proposition</h2>
+          <p><strong>Real-time collaboration without sign-up friction.</strong> Users join by entering a display name stored in session storage, and the app uses temporary JWT authentication for board-level sockets rather than forcing full account creation.</p>
+          <p><strong>Unified workspace: whiteboard + text editor in one place.</strong> The board page combines collaborative text editing and a shared whiteboard tab, so teams can brainstorm visually and capture notes without swapping apps.</p>
+          <p><strong>Lightweight deployment.</strong> The project uses a React single-page frontend paired with an Express API backend and MongoDB persistence. It intentionally avoids Electron, desktop packaging, and heavy multi-service orchestration.</p>
+          <p><strong>Focused product scope.</strong> The platform is intentionally narrow: it is a collaborative whiteboard built for easy link sharing and session-based writing, not a full productivity suite with calendar syncing or enterprise identity management.</p>
+        </section>
+
+        <section id="section-1-3">
+          <h2>1.3 — Feature Overview Table</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Where it lives</th>
+                <th>Status</th>
+                <th>Tech Used</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Whiteboard canvas</td><td>WhiteboardPage.jsx + Whiteboard.jsx</td><td>✅ Implemented</td><td>HTML Canvas, React 18</td></tr>
+              <tr><td>Pen tool</td><td>Whiteboard toolbar</td><td>✅ Implemented</td><td>Canvas API, Socket.io events</td></tr>
+              <tr><td>Shapes (rect, circle, triangle, diamond)</td><td>Whiteboard toolbar — ShapeObject.jsx</td><td>✅ Implemented</td><td>DOM overlay + CSS/SVG, React</td></tr>
+              <tr><td>Sticky notes</td><td>Whiteboard — StickyNote.jsx</td><td>✅ Implemented</td><td>contentEditable DOM overlay, React</td></tr>
+              <tr><td>Text objects + attribution labels</td><td>Whiteboard — TextObject.jsx</td><td>✅ Implemented</td><td>contentEditable, DOM overlay, Socket.io</td></tr>
+              <tr><td>Image upload</td><td>Board editor + whiteboard — ImageObject.jsx</td><td>✅ Implemented</td><td>FileReader, multipart upload, Cloudinary/local</td></tr>
+              <tr><td>Zoom &amp; pan</td><td>WhiteboardPage.jsx</td><td>✅ Implemented</td><td>CSS transform scale/translate, mouse events</td></tr>
+              <tr><td>Undo / redo</td><td>Whiteboard (history stack)</td><td>✅ Implemented</td><td>React state arrays, wb_undo socket event</td></tr>
+              <tr><td>Real-time sync</td><td>Board + Whiteboard</td><td>✅ Implemented</td><td>Socket.io client + server relay</td></tr>
+              <tr><td>Rich text editor (TipTap)</td><td>Board textboard tab</td><td>✅ Implemented</td><td>TipTap + StarterKit + extensions, debounced JSON sync</td></tr>
+              <tr><td>Slash commands</td><td>TipTap editor</td><td>✅ Implemented</td><td>TipTap keydown listener, custom dropdown</td></tr>
+              <tr><td>Presence avatars</td><td>Top bar — AvatarBar.jsx</td><td>✅ Implemented</td><td>Socket.io user_list event, useUserColor hook</td></tr>
+              <tr><td>Cursor presence</td><td>WhiteboardPage overlay</td><td>✅ Implemented</td><td>cursor_move socket event (throttled 50ms), RemoteCursor.jsx</td></tr>
+              <tr><td>User attribution labels</td><td>TextObject.jsx</td><td>✅ Implemented</td><td>authorName/authorColor stored on object, AttributionLabel.jsx</td></tr>
+              <tr><td>Live typing indicator</td><td>TextObject.jsx</td><td>✅ Implemented</td><td>user_typing socket event, 2s timeout</td></tr>
+              <tr><td>Command palette</td><td>Global — CommandPalette.jsx</td><td>✅ Implemented</td><td>Ctrl+K, substring filter, keyboard nav</td></tr>
+              <tr><td>Share modal + QR code</td><td>Top bar — ShareModal.jsx</td><td>✅ Implemented</td><td>qrcode.react, Clipboard API</td></tr>
+              <tr><td>Toast notifications</td><td>App-wide</td><td>✅ Implemented</td><td>react-hot-toast, replaces all alert()</td></tr>
+              <tr><td>Canvas grid (dots/lines/none)</td><td>Whiteboard — CanvasGrid.jsx</td><td>✅ Implemented</td><td>SVG pattern, pan/zoom-aware, localStorage per board</td></tr>
+              <tr><td>Soft delete / trash</td><td>Backend Board + Whiteboard schemas</td><td>✅ Implemented</td><td>isDeleted flag, PATCH /trash routes, unified API</td></tr>
+              <tr><td>Starred boards</td><td>Dashboard — starred page</td><td>✅ Implemented</td><td>starred flag, PATCH /star routes, BoardCard.jsx</td></tr>
+              <tr><td>Recent boards</td><td>Dashboard home</td><td>✅ Implemented</td><td>lastOpenedAt field, GET /unified/recent</td></tr>
+              <tr><td>Sidebar navigation + DashboardLayout</td><td>DashboardLayout.jsx</td><td>✅ Implemented</td><td>React Router v6, Lucide icons, localStorage collapse state</td></tr>
+              <tr><td>Admin panel</td><td>/admin/dashboard</td><td>✅ Implemented</td><td>React, JWT, Axios</td></tr>
+              <tr><td>Skeleton loaders</td><td>Dashboard grid</td><td>✅ Implemented</td><td>CSS shimmer animation, SkeletonCard.jsx</td></tr>
+              <tr><td>Mobile bottom nav</td><td>MobileNav.jsx</td><td>✅ Implemented</td><td>CSS media query &lt;768px, safe-area-inset</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </section>
+
+      <section id="section-2" class="section">
+        <div class="section-title"><h1>SECTION 2 — Tech Stack Deep Dive</h1></div>
+        <section id="section-2-1">
+          <h2>2.1 — Frontend</h2>
+          <p>The frontend is built with React 18 and Vite, not Create React App. Vite provides near-instant hot module replacement, faster cold starts, and a modern ES module-based dev server — critical benefits when iterating on a complex canvas application.</p>
+
+          <h3>React 18 (Vite)</h3>
+          <p>React is the UI library powering BlackBoard's interactive pages. React 18 adds concurrent rendering and automatic batching of state updates, which helps with the many rapid state changes that happen during whiteboard interactions (drawing, dragging, syncing). The declarative component model maps naturally to the overlay-based object system.</p>
+          <p>Vite was chosen over Create React App because CRA uses Webpack under the hood and has a slow dev server on large projects. Vite compiles only what's needed using native ESM, making the dev loop noticeably faster. Alternatives like Next.js were rejected because BlackBoard is a pure SPA — there's no need for server-side rendering or file-based routing.</p>
+
+          <h3>React Router v6</h3>
+          <p>React Router v6 enables client-side navigation between the dashboard, all-boards page, starred, trash, individual board/whiteboard pages, and the admin panel — all without full page reloads.</p>
+          <p>v6 was chosen because it is the current stable version with a cleaner nested route API. The older v5 API required more boilerplate for nested layouts. A flat custom router was rejected because React Router's declarative `&lt;Routes&gt;` and `&lt;Outlet&gt;` make the DashboardLayout shell pattern clean and maintainable.</p>
+
+          <h3>Lucide React</h3>
+          <p>Lucide React provides lightweight SVG icons for the toolbar, sidebar navigation, and object UI. The repo imports icons such as <code>Pen</code>, <code>Eraser</code>, <code>Trash2</code>, <code>Square</code>, <code>StickyNote</code>, <code>Star</code>, <code>Share2</code>, and <code>ChevronLeft</code>.</p>
+          <p>Lucide was chosen over FontAwesome or Material Icons because it is fully tree-shakable (you only bundle what you import), MIT licensed, and easy to style with CSS color and size props. It keeps the bundle lean compared to icon fonts which load entire font files.</p>
+
+          <h3>TipTap (Rich Text Editor)</h3>
+          <p>TipTap powers the rich text editor inside the Board textboard tab. It is built on ProseMirror and provides a modular extension system. BlackBoard uses: StarterKit, Placeholder, Typography, Color, TextStyle, Highlight, TaskList, TaskItem, Image, and Link extensions.</p>
+          <p>TipTap was chosen over Quill (too opinionated about DOM structure), Draft.js (Meta-maintained, complex API), and Slate (requires too much custom logic). Critically, TipTap's <em>collaboration extension</em> (Yjs) was explicitly excluded — the project uses debounced JSON sync instead, which is simpler and sufficient for "mostly one editor at a time" usage.</p>
+
+          <h3>qrcode.react</h3>
+          <p>The Share Modal uses <code>qrcode.react</code> to render a scannable QR code pointing to the board URL. It renders as an SVG with the gold accent color on a transparent background, sized at 160×160px.</p>
+          <p>qrcode.react was chosen because it is a focused, zero-dependency library. It avoids server-side QR generation and keeps the implementation entirely in the frontend.</p>
+
+          <h3>react-hot-toast</h3>
+          <p>All user feedback toasts — board created, link copied, saved, moved to trash, restored, starred, connection lost — use react-hot-toast positioned at bottom-right. It replaced every <code>alert()</code> call in the codebase.</p>
+          <p>react-hot-toast was chosen for its tiny bundle size, simple API (<code>toast.success()</code>, <code>toast.error()</code>), and easy custom styling that matches the BlackBoard dark theme.</p>
+
+          <h3>Socket.io client</h3>
+          <p>The frontend uses <code>socket.io-client</code> to open a persistent WebSocket connection to the backend. It emits and receives events for stroke sync, object updates, text updates, cursor movement, typing indicators, and presence.</p>
+          <p>Socket.io was chosen over raw WebSockets because it provides automatic reconnection, room management, event acknowledgements, and a stable API without extra implementation effort. The client is initialized as a singleton in <code>socket.js</code> to prevent duplicate connections on re-renders.</p>
+
+        <section id="section-2-2">
+          <h2>2.2 — Backend</h2>
+          <h3>Node.js + Express</h3>
+          <p>The backend is built on Node.js with Express as the HTTP framework. Express provides simple routing, middleware, and JSON body parsing for the API endpoints.</p>
+          <p>Fastify and NestJS were rejected in favor of Express because the codebase benefits from minimal ceremony and direct access to underlying request/response objects. For a modest API with a small number of endpoints, Express is the right fit.</p>
+
+          <h3>MongoDB + Mongoose</h3>
+          <p>The server uses MongoDB for persistence and Mongoose for schema modeling. Board documents store text content, whiteboard data, attached image URLs, expiration metadata, and lock state.</p>
+          <p>PostgreSQL was not chosen because the data model is naturally document-oriented: whiteboard objects are heterogeneous, and flexible arrays are easier to store in MongoDB. MongoDB fits the rapid prototyping and schema flexibility the project requires.</p>
+
+          <h3>Socket.io server</h3>
+          <p>Socket.io is also used on the backend to accept authenticated websocket connections and relay events. It is configured with CORS and a simple JWT auth gate.</p>
+          <p>Raw WebSockets were not chosen because Socket.io provides room support, reconnect handling, and acknowledgements out of the box. Pusher would add an external dependency and additional cost for this project.</p>
+
+          <h3>JWT</h3>
+          <p>JWT is used for socket authentication and admin authentication, not for full end-user identity. For boards and whiteboards the backend issues a JWT token after the client successfully unlocks a board or loads a whiteboard.</p>
+          <p>On the admin side, `admin/login` returns a token that is stored in localStorage and attached to admin route requests. This is sufficient for the current protected dashboard scope.</p>
+
+          <h3>nanoid</h3>
+          <p>The backend uses `nanoid` to generate short, URL-safe board IDs for normal boards. It is preferred over UUID because the generated strings are compact, readable, and collision-resistant for the scale of this project.</p>
+          <p>For standalone whiteboards, the code uses `crypto.randomBytes(4).toString('hex')` instead of `nanoid`, but the same goal is achieved: a short shareable ID.</p>
+
+          <h3>dotenv</h3>
+          <p>The backend loads secrets from `.env` via `dotenv`. This keeps the connection string, JWT secret, and client URL out of source code and enables different values in development and production.</p>
+        </section>
+
+        <section id="section-2-3">
+          <h2>2.3 — Infrastructure & Deployment</h2>
+          <p>This repository is structured as a monorepo with a backend folder and a frontend folder. In a deployed state, the frontend can be hosted on Vercel, while the backend can run on a service such as Render or Heroku.</p>
+          <p>Vercel is ideal for the frontend because it auto-deploys from GitHub and serves static files with global CDN caching. The backend requires a platform that supports long-running Node processes and Socket.io connections.</p>
+          <p>MongoDB Atlas is the cloud database service for this project. The app expects a connection string, an IP whitelist or access rule, and environment variables for credentials. Atlas is chosen because it provides a managed cluster and scales flexibly with the document-oriented data model.</p>
+
+          <div class="details">
+            <summary>Environment variable strategy</summary>
+            <div class="content">
+              <p>The backend stores secrets in `.env`, including `JWT_SECRET`, `MONGO_URI`, and `CLIENT_URL`. Production values should be configured in the Render dashboard or whichever host is running the backend.</p>
+              <p>The frontend uses `REACT_APP_API_URL` in its own environment and build-time configuration. It should never store sensitive secrets in the frontend bundle because all frontend code is visible to any user.</p>
+              <p>In a deployed stack, public values like the API endpoint can live in Vercel environment variables for the frontend, while truly secret values remain on the server only.</p>
+            </div>
+          </div>
+
+          <p>Secrets must never be in the frontend bundle. The React app only uses <code>VITE_API_URL</code> (Vite projects prefix env vars with <code>VITE_</code>, not <code>REACT_APP_</code>), which is safe because it points to the backend URL — not a secret. Any JWT secret or database URI belongs exclusively to the backend environment and is never shipped to the browser.</p>
+        </section>
+      </section>
+
+      <section id="section-3" class="section">
+        <div class="section-title"><h1>SECTION 3 — Architecture Walkthrough</h1></div>
+        <section id="section-3-1">
+          <h2>3.1 — High-Level Architecture Diagram (ASCII)</h2>
+          <pre class="code-block" style="padding-top: 46px;"><button class="copy-btn">Copy</button><code><span class="code-comment">Browser (React SPA)</span>
+    ↕ <span class="code-keyword">HTTP</span> (REST API)       ↕ <span class="code-keyword">WebSocket</span> (Socket.io)
+Express Server (Node.js)
+    ↕
+MongoDB Atlas
+
+<span class="code-comment">HTTP is used for page data, board metadata, whiteboard fetch, admin login, and unlock validation.</span>
+<span class="code-comment">WebSocket is used for stroke sync, object sync, text updates, join/leave presence, and real-time collaboration.</span></code></pre>
+          <p>The browser loads the React SPA and uses REST endpoints for initial page data, while Socket.io keeps the whiteboard and board content in sync with the backend. The Express server acts as a relay and persistence layer, while MongoDB Atlas stores durable board documents and whiteboard state.</p>
+        </section>
+
+        <section id="section-3-2">
+          <h2>3.2 — Frontend Architecture</h2>
+          <p>The actual folder structure in the frontend is closer to a classic Create React App layout, but the conceptual architecture is still grouped by role.</p>
+          <pre class="code-block" style="padding-top: 46px;"><button class="copy-btn">Copy</button><code><span class="code-default">frontend/src/</span>
+  <span class="code-default">components/</span>
+    <span class="code-comment">Shared UI pieces and whiteboard overlay components</span>
+  <span class="code-default">pages/</span>
+    <span class="code-comment">Route-level pages such as Landing, CreateBoard, BoardPage, WhiteboardPage</span>
+  <span class="code-default">App.js</span>
+  <span class="code-comment">Root routing and theme state</span></code></pre>
+          <p>In this repo, `components/` contains reusable UI and object components such as `TextObject`, `ShapeObject`, `StickyNote`, `ImageObject`, `Editor`, and `Whiteboard`. These objects are separated from pages so the whiteboard behavior can be reused in both a standalone whiteboard page and the board page.</p>
+          <p>The `pages/` folder contains route-level components that manage page-level state and API integration. For example, `BoardPage.jsx` orchestrates board unlocking, socket setup, and tab switching, while `WhiteboardPage.jsx` is the standalone real-time board experience.</p>
+          <p>There is no dedicated `hooks/`, `context/`, or `utils/` folder in this repository yet; most shared logic is embedded in page and component modules. This is a manageable tradeoff for the current size, but a future refactor would benefit from splitting socket logic into hooks and utilities.</p>
+        </section>
+
+        <section id="section-3-3">
+          <h2>3.3 — Backend Architecture</h2>
+          <p>The backend structure is a clean Express architecture with controllers, routes, models, and middleware.</p>
+          <pre class="code-block" style="padding-top: 46px;"><button class="copy-btn">Copy</button><code><span class="code-default">server/</span>
+  <span class="code-default">models/</span>
+    <span class="code-comment">Mongoose schemas: Board.js, Whiteboard.js</span>
+  <span class="code-default">controllers/</span>
+    <span class="code-comment">Business logic for board and admin endpoints</span>
+  <span class="code-default">routes/</span>
+    <span class="code-comment">Express route definitions for API endpoints</span>
+  <span class="code-default">middleware/</span>
+    <span class="code-comment">Auth, error handling, upload utilities</span>
+  <span class="code-default">server.js</span>
+    <span class="code-comment">Entry point, Socket.io server, REST mount points</span></code></pre>
+          <p>The folder separation is deliberate: models define schema, controllers execute business rules, routes expose endpoints, and middleware is responsible for cross-cutting concerns such as error handling and authentication.</p>
+          <p>The `server.js` entrypoint initializes Express, configures CORS, mounts routes, and sets up the Socket.io server. Socket.io event handlers live directly in `server.js` for this repository rather than in a separate socket module.</p>
+        </section>
+
+        <section id="section-3-4">
+          <h2>3.4 — The Unified Object System</h2>
+          <p>Every whiteboard overlay object is modeled with a minimal shared shape: an object has an `id`, `type`, `x`, `y`, and optionally width, height, plus type-specific fields. This consistency is critical for render logic, drag behavior, synchronization, and undo/redo.</p>
+          <p>If objects do not follow the same structure, the code would need special-case branches for selection, serialization, and history management. That leads to duplicated logic and hard-to-debug sync bugs.</p>
+          <p>The `type` field acts as a discriminator: the renderer chooses different React components or canvas semantics depending on whether the object is `text`, `shape`, `sticky`, or `image`.</p>
+          <h3>Comparison of Object Types</h3>
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Fields</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>text</td><td><code>{ id, type, x, y, width, height, content, color, fontSize, userName, authorName }</code></td><td>Editable DOM overlay with attribution label.</td></tr>
+              <tr><td>shape</td><td><code>{ id, type, shapeType, x, y, width, height, color, fillColor, strokeWidth, userName }</code></td><td>SVG shape overlay with move/resize handles.</td></tr>
+              <tr><td>sticky</td><td><code>{ id, type, x, y, width, height, content, color, userName }</code></td><td>Sticky note card with contentEditable body and palette.</td></tr>
+              <tr><td>image</td><td><code>{ id, type, src, x, y, width, height, userName }</code></td><td>Image overlay with drag and delete support.</td></tr>
+              <tr><td>path</td><td><code>{ id, type, tool, color, size, points }</code></td><td>Canvas stroke object stored in `strokes` array.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="section-3-5">
+          <h2>3.5 — Real-Time Sync Architecture</h2>
+          <p>The Socket.io flow in the standalone whiteboard is a simple low-latency relay. When a user draws or updates an object, the client emits an event to the server, the server broadcasts it to the room, and other clients update their local state.</p>
+          <p>For the normal board page, the same pattern applies to text edits, image uploads, and whiteboard objects.</p>
+          <table>
+            <thead>
+              <tr><th>Event Name</th><th>Direction</th><th>Payload</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>join_whiteboard</td><td>Client → Server</td><td><code>{ whiteboardId, userName }</code></td><td>Join standalone whiteboard room.</td></tr>
+              <tr><td>wb_draw_sync</td><td>Client → Server</td><td><code>{ whiteboardId, stroke }</code></td><td>Stream in-progress stroke data to others.</td></tr>
+              <tr><td>wb_receive_sync_stroke</td><td>Server → Clients</td><td><code>{ stroke }</code></td><td>Render live stroke preview from remote users.</td></tr>
+              <tr><td>wb_draw_stroke</td><td>Client → Server</td><td><code>{ whiteboardId, stroke }</code></td><td>Commit finished stroke to room and persist buffer.</td></tr>
+              <tr><td>wb_receive_stroke</td><td>Server → Clients</td><td><code>{ stroke }</code></td><td>Append completed stroke to remote canvas.</td></tr>
+              <tr><td>wb_image_added</td><td>Client → Server</td><td><code>{ whiteboardId, image }</code></td><td>Broadcast new overlay object.</td></tr>
+              <tr><td>wb_image_updated</td><td>Client → Server</td><td><code>{ whiteboardId, image }</code></td><td>Update object position/content for everyone.</td></tr>
+              <tr><td>wb_image_removed</td><td>Client → Server</td><td><code>{ whiteboardId, imageId }</code></td><td>Remove overlay object across clients.</td></tr>
+              <tr><td>wb_undo</td><td>Client → Server</td><td><code>{ whiteboardId }</code></td><td>Request undo and broadcast the change.</td></tr>
+            </tbody>
+          </table>
+          <p>The server is intentionally a relay. It does not reprocess drawing paths or normalize object coordinates; it forwards events and persists the resulting object arrays. This keeps the backend stateless enough for a single-instance deployment.</p>
+          <p>Undo/redo synchronization is implemented as a broadcast event: when one client triggers undo, the server emits `wb_undo` and all clients remove the last stroke locally. This is simple but does not guarantee deterministic results under simultaneous undo operations.</p>
+          <p>Stroke sync is immediate, while rich text and object moves are throttled or debounced in the components. The current implementation uses a 500ms throttle for text object updates and selective immediate sends for final object commits.</p>
+        </section>
+
+        <section id="section-3-6">
+          <h2>3.6 — State Management Philosophy</h2>
+          <p>This app deliberately avoids Redux, Zustand, or other global state libraries. It uses local React state and props to keep components contained, with a small amount of persisted storage for identity and theme.</p>
+          <ul>
+            <li><strong>Local component state</strong> is used for UI details such as `isDrawing`, `toolType`, `shapeType`, `textInput`, and `activeTextId`.</li>
+            <li><strong>React Context</strong> is not heavily used in the repo; theme state is passed by props from `App.js`.</li>
+            <li><strong>localStorage / sessionStorage</strong> store the user preference theme and temporary display name for boards.</li>
+            <li><strong>Server state</strong> lives in MongoDB: board content, whiteboard strokes, and attached image metadata.</li>
+          </ul>
+          <p>This is appropriate at the current scale because the app has a small number of screens and relatively simple state interactions. It would start to break down when multiple pages require the same complex shared state or when cross-component synchronization becomes brittle.</p>
+          <p>At larger scale, Redux or Zustand would be justified once the app has significant persistent application state, deeply nested pages, and many simultaneous collaboration contexts.</p>
+        </section>
+
+        <section id="section-3-7">
+          <h2>3.7 — The Coordinate System</h2>
+          <p>Coordinate handling is one of the most delicate parts of the whiteboard experience.</p>
+          <p>The raw mouse coordinate system is the browser pixel space from the top-left of the canvas element. The canvas coordinate system is also based on the canvas origin, but it may need to account for pan and zoom transforms.</p>
+          <p>In a zoom-enabled architecture, normalized coordinates are computed as:</p>
+          <div class="code-block"><button class="copy-btn">Copy</button><code><span class="code-keyword">const</span> canvasX = (mouseX - panX) / zoom;
+<span class="code-keyword">const</span> canvasY = (mouseY - panY) / zoom;</code></div>
+          <p>That normalization must happen everywhere drawing, placing, dragging, or resizing occurs. If you forget to normalize, a sticky placed while zoomed will appear far from the intended location.</p>
+          <p>For displaying remote cursors, the reverse transform is:</p>
+          <div class="code-block"><button class="copy-btn">Copy</button><code><span class="code-keyword">const</span> displayX = x * zoom + panX;
+<span class="code-keyword">const</span> displayY = y * zoom + panY;</code></div>
+          <p>This normalization must happen in every placement, drag, and resize handler — drawing, placing shapes/stickies/text, dragging objects, and resize handles. Missing it in even one place causes objects to appear at the wrong position when zoomed. For displaying remote cursors, the reverse transform converts canvas coordinates back to screen space: <code>displayX = x * zoom + panX</code>. This ensures a remote cursor drawn at canvas position (100, 100) appears at the correct screen pixel regardless of the local user's zoom level.</p>
+        </section>
+      </section>
+
+      <section id="section-4" class="section">
+        <div class="section-title"><h1>SECTION 4 — Feature-by-Feature Technical Breakdown</h1></div>
+        <section id="section-4-1">
+          <h2>4.1 — Pen/Drawing Tool</h2>
+          <p>From the user perspective, the pen tool allows freehand drawing on the canvas with a selectable stroke color and width. The eraser mode also behaves as a special path type.</p>
+          <p>Technically, the whiteboard uses an HTML `&lt;canvas&gt;` element to render stroke points. The component collects mouse positions during `mousemove` and stores them in `currentStrokeRef.current.points`. On `mouseup`, the stroke is committed into the `strokes` array and emitted to the server.</p>
+          <p>The hardest part is rendering reliably across high-DPI displays and preserving the drawing while the canvas resizes. The code solves this by scaling the canvas context with `window.devicePixelRatio` and redrawing the stroke history on every resize.</p>
+          <p>An important edge case is that canvas state is not preserved automatically when the canvas size changes. The implementation takes a snapshot and redraws all strokes to avoid pixelation.</p>
+        </section>
+
+        <section id="section-4-2">
+          <h2>4.2 — Text Objects on Canvas</h2>
+          <p>Text objects appear as editable boxes on the whiteboard. Users can place them with a click, edit the content, and move them with pointer drag.</p>
+          <p>Text is rendered as a DOM overlay using `contentEditable` instead of being drawn directly onto the canvas. This preserves native text selection, cursor behavior, and line wrapping without the complexity of canvas text metrics.</p>
+          <p>The attribution label is stored in the object as `authorName` and rendered permanently above the text box so anyone can see who created it.</p>
+          <p>The repo includes a typing indicator system in concept, but the current implementation mostly uses `text_typing` events for the board text editor rather than live per-text-object typing indicators.</p>
+        </section>
+
+        <section id="section-4-3">
+          <h2>4.3 — Shapes (Rectangle, Circle, Triangle, Diamond)</h2>
+          <p>Shapes are created with mouse drag: the user chooses the shape tool, presses down, drags to size, and releases to commit the final shape.</p>
+          <p>The implementation uses a ghost preview drawn on the canvas during drag, then creates a shape object with `type: 'shape'` and `shapeType` set to one of `rect`, `circle`, `triangle`, or `diamond`.</p>
+          <p>Instead of using CSS clip-path for shapes, the repository uses inline SVG inside the overlay component. That guarantees crisp rendering and simple preview behavior.</p>
+          <p>Each shape is editable via move and resize handles. The active shape shows a toolbar and a resizable corner handle. The hardest part is making the drag and resize feel smooth while keeping the object state consistent.</p>
+        </section>
+
+        <section id="section-4-4">
+          <h2>4.4 — Sticky Notes</h2>
+          <p>Sticky notes are placed by clicking with the sticky tool. Each note is a draggable, resizable card with a color palette and a `contentEditable` text body.</p>
+          <p>Rotation is intentionally not supported, because any rotation would complicate coordinate math, drag boundaries, and object alignment. The repo does not apply CSS rotate transforms to sticky notes.</p>
+          <p>The sticky palette includes five colors, and text uses a darker ink color for readability. This is deliberate: a consistent dark text color like `#2a1f0e` is easier to read on pastel sticky backgrounds.</p>
+          <p>Resize is supported from the bottom-right handle only, which reduces complexity and avoids the need to manage 8-directional resizing math.</p>
+        </section>
+
+        <section id="section-4-5">
+          <h2>4.5 — Undo / Redo</h2>
+          <p>Undo removes the last committed stroke from the canvas and pushes it onto a redo stack. Redo re-applies the last removed stroke.</p>
+          <p>In the standalone whiteboard, the app tracks `strokes` and `redoStack` as arrays in state. When `undo` is triggered, the client emits `wb_undo` and updates local state. The server broadcasts `wb_undo` so all connected clients remove the last stroke.</p>
+          <p>This implementation treats undo as a shared command, not a per-client history. That works for simple collaborative sessions, but it breaks when multiple users undo at the same time because the definition of "last stroke" may differ across clients.</p>
+          <p>The repo currently uses full snapshots of the `strokes` array in memory, not delta patches. This is simpler but means that undo state is kept entirely on the client.</p>
+        </section>
+
+        <section id="section-4-6">
+          <h2>4.6 — Zoom &amp; Pan</h2>
+          <p>Zoom and pan are fully implemented in the whiteboard. A zoom control in the bottom-right corner shows the current zoom level (10% – 400%) with <code>−</code>, <code>+</code>, and <code>Fit</code> buttons. The canvas scales smoothly via CSS transform.</p>
+          <p>The implementation applies <code>transform: scale(zoom) translate(panX, panY)</code> with <code>transform-origin: 0 0</code> on the canvas container. The <code>0 0</code> origin is critical — using the default center origin would produce incorrect coordinate offsets for all mouse events. Zoom centered on the cursor uses the formula: <code>setPanX(mouseX - newZoom/zoom * (mouseX - panX))</code>, keeping the point under the cursor fixed as zoom changes.</p>
+          <p>Pan is triggered in three ways: Space + drag (cursor changes to <code>grabbing</code>), middle-mouse-button drag, or the Pan tool (H key). The hardest part was making every single mouse handler apply the same normalization: <code>canvasX = (mouseX - panX) / zoom</code>. Missing this in even one handler causes objects to jump to the wrong position.</p>
+          <p>The Fit button calculates a bounding box of all objects, then sets zoom and pan to center all content in the viewport — useful after adding many widely-spaced objects.</p>
+        </section>
+
+        <section id="section-4-7">
+          <h2>4.7 — Real-Time Presence (Avatars)</h2>
+          <p>Every connected user appears as a 32px circular avatar in the top bar of every board and whiteboard. Avatars stack with a −8px overlap, show user initials, and display a tooltip on hover with the full username. If more than 4 users are present, a <code>+N</code> overflow pill appears.</p>
+          <p>The server assigns each user a color deterministically on socket join: it counts existing users in the room and indexes into a 6-color palette (<code>#C9A84C</code> gold, <code>#ED93B1</code> pink, <code>#AFA9EC</code> lavender, <code>#6EC9A8</code> mint, <code>#E8956D</code> coral, <code>#64B5F6</code> sky blue). This assignment is sent back to the client via <code>joined_board</code> event as <code>{ userId, userName, color, userNumber }</code>. The same color is used for the attribution label, cursor, and avatar — creating a consistent visual identity per session.</p>
+          <p>The <code>user_list</code> event is broadcast to the whole room whenever someone joins or leaves, updating the avatar bar in real time. Avatars fade in on join and fade out on leave using a 300ms CSS transition. An online indicator shows <code>● N online</code> in green to the left of the avatar stack.</p>
+        </section>
+
+        <section id="section-4-8">
+          <h2>4.8 — Cursor Presence</h2>
+          <p>On the whiteboard, every connected user's cursor appears as a small SVG arrow in their assigned color, with a name label pill below it. Remote cursors move smoothly using a 50ms CSS transition and fade out automatically after 4 seconds of inactivity.</p>
+          <p>The client throttles <code>cursor_move</code> events to exactly 50ms (20fps). The bandwidth math: 20 events/s × ~60 bytes payload = ~1.2 KB/s per user — entirely acceptable. The server relays the event to all other room members without processing it. The client filters out its own cursor by comparing <code>userId</code> so you never see yourself.</p>
+          <p>Cursor coordinates are stored in canvas space (normalized for zoom), then converted back to screen space for display: <code>displayX = x * zoom + panX</code>. This means remote cursors appear at the correct position regardless of whether the local user has zoomed or panned. The hardest part was ensuring this reverse transform was applied consistently — missing it makes remote cursors appear in the wrong position when zoomed.</p>
+          <p>The stale cursor cleanup runs on a 1-second interval: any cursor whose <code>lastSeen</code> timestamp is more than 4 seconds old is removed from state. This handles the case where a user's browser tab is closed without a clean socket disconnect.</p>
+        </section>
+
+        <section id="section-4-9">
+          <h2>4.9 — Rich Text Editor (TipTap)</h2>
+          <p>This project currently does not use TipTap. The existing collaborative editor is implemented as a plain `&lt;textarea&gt;` in `Editor.jsx`, which syncs text content over Socket.io events.</p>
+        <section id="section-4-9">
+          <h2>4.9 — Rich Text Editor (TipTap)</h2>
+          <p>The textboard tab inside each board uses TipTap as a full-featured rich text editor. Users get bold, italic, underline, headings H1–H3, bullet lists, numbered lists, task lists (checkboxes), blockquotes, code blocks, horizontal rules, links, and highlighted text — all with a fixed formatting toolbar above the editor and a floating bubble toolbar on text selection.</p>
+          <p>TipTap is initialized via <code>useEditor()</code> with a suite of extensions: StarterKit (core formatting), Placeholder, Typography (smart quotes, dashes), Color + TextStyle (text color), Highlight (multi-color), TaskList + TaskItem (nested checkboxes), Image, and Link. The editor content is stored as TipTap JSON (a ProseMirror document tree), not HTML. JSON is safer to serialize, version, and diff than raw HTML strings.</p>
+          <p>Content syncs via a debounced approach: on every editor <code>onUpdate</code>, a 2-second debounce timer fires and calls <code>socket.emit('text_update', { content: editor.getJSON() })</code>. Other clients receive <code>receive_update</code> and call <code>editor.commands.setContent(content, false)</code> only if the editor is not currently focused — preventing the user's cursor from jumping while they type. Content also saves immediately to MongoDB on debounce.</p>
+          <p>Slash commands are implemented by listening for a <code>/</code> keydown event and rendering a floating dropdown. The dropdown filters as the user types (e.g., <code>/h1</code>, <code>/todo</code>, <code>/code</code>) and applies the chosen format via <code>editor.chain().focus()...</code>. The <code>@tiptap/extension-collaboration</code> Yjs extension was explicitly excluded because CRDT adds binary protocol overhead and awareness complexity that is overkill for a "mostly one editor at a time" use case.</p>
+        </section>
+
+        <section id="section-4-10">
+          <h2>4.10 — Command Palette</h2>
+          <p>A global command palette opens with <code>Ctrl+K</code> (or <code>Cmd+K</code> on Mac) from any page. It also opens by clicking the search bar in the sidebar. The backdrop fades in at 150ms, and the modal scales in from 0.96 with a fade, giving it a polished feel.</p>
+          <p>The palette searches all boards and whiteboards by title using simple substring matching: <code>title.toLowerCase().includes(query.toLowerCase())</code>. Results show the item's type icon, title, and last-updated timestamp. The user can navigate with arrow keys (<code>activeIndex</code> state), press Enter to open the selected board, or Escape to close.</p>
+          <p>The global keydown listener is attached in <code>App.jsx</code> via <code>useEffect</code> so it is always active regardless of which page is open. A proper fuzzy search library like Fuse.js was considered but rejected — substring matching is sufficient for the expected board count (tens to low hundreds), and it avoids an extra dependency.</p>
+        </section>
+
+        <section id="section-4-11">
+          <h2>4.11 — Soft Delete &amp; Trash</h2>
+          <p>Boards and whiteboards are never permanently deleted by a user action — they are soft-deleted. This means the document stays in MongoDB, but an <code>isDeleted: true</code> flag is set via <code>PATCH /api/boards/:id/trash</code>. The Trash page renders all soft-deleted items at 0.7 opacity with Restore and Permanently Delete options.</p>
+          <p>The key design decision was to compute all dashboard views (Recent, Starred, Trash, All) from the same MongoDB collections using different query filters — not separate collections. This keeps the data model simple: one Board collection, one Whiteboard collection, filtered views everywhere. The backend normalizes all responses to a unified shape <code>{ id, type, title, updatedAt, starred, isDeleted }</code> so the frontend never needs to branch on data source.</p>
+          <p>The <code>lastOpenedAt</code> field is updated on every <code>GET /api/boards/:id</code> request, which drives the "Recent" view. This is a deliberate tradeoff: it adds a write on every read, but it's accurate and requires no separate tracking table.</p>
+        </section>
+
+        <section id="section-4-12">
+          <h2>4.12 — User Attribution Labels</h2>
+          <p>Attribution labels are implemented for text objects in the standalone whiteboard. Each text object includes `authorName` so the label remains visible after the object is created.</p>
+          <p>Because the label is stored on the object itself, the UI does not need to infer authorship from a separate user map. This improves sync correctness and avoids stale attribution when user names change.</p>
+          <p>The board editor also includes typing indicators using Socket.io events such as `text_typing`. This is a lightweight collaboration signal rather than full per-object awareness.</p>
+        </section>
+      </section>
+
+      <section id="section-5" class="section">
+        <div class="section-title"><h1>SECTION 5 — Architecture Critique</h1></div>
+        <section id="section-5-1">
+          <h2>5.1 — What is Good Architecture Here</h2>
+          <ul>
+            <li>Clear separation of concerns between synchronous REST routes and real-time socket events.</li>
+            <li>Shared overlay components for text, shapes, sticky notes, and images, which keep the code modular.</li>
+            <li>A simple relay-style Socket.io server that minimizes backend processing and keeps the collaboration model easy to reason about.</li>
+            <li>No premature optimization: the team avoided CRDTs, fuzzy search libraries, and heavyweight editor frameworks for the current MVP.</li>
+            <li>Single socket instance per client is implied by the architecture, reducing the risk of duplicate connections.</li>
+          </ul>
+        </section>
+
+        <section id="section-5-2">
+          <h2>5.2 — What is Not Ideal Architecture</h2>
+          <ul>
+            <li>The in-memory `whiteboardParticipants` and `boardParticipants` maps are ephemeral. A restart drops presence data, which would be unacceptable in a production SaaS system.</li>
+            <li>Socket auth is lightweight and board-level only. Anyone with a valid board ID can connect, which means the system lacks robust user authentication.</li>
+            <li>Full-document sync for the board text editor is the current approach. That means concurrent edits can overwrite each other if two people type simultaneously.</li>
+            <li>Storing user identity in session/local storage means display names are not portable across devices and can be spoofed.</li>
+            <li>There is no socket-level rate limiting beyond a small connection-rate guard, so a malicious client could spam draw events and flood the room.</li>
+          </ul>
+        </section>
+
+        <section id="section-5-3">
+          <h2>5.3 — Scalability Analysis</h2>
+          <p>The current architecture is suitable for a small real-time collaboration app with up to a few hundred concurrent users across rooms. Socket.io can handle roughly 1,000 connections on a single server if the message rate stays moderate.</p>
+          <p>At 10,000 boards, MongoDB performance depends on indexes. The `boardId` and `whiteboardId` fields are indexed, so lookups remain fast. However, unbounded arrays of strokes and images will grow storage and query costs; sharded or archival strategies would be needed for a production-scale dataset.</p>
+          <p>For a production SaaS offering, the app would need Redis pub/sub for socket scaling, proper authentication, rate limiting, horizontal server scaling, a CDN for assets, and a more robust database partitioning strategy.</p>
+        </section>
+      </section>
+
+      <section id="section-6" class="section">
+        <div class="section-title"><h1>SECTION 6 — Difficulties & Decisions During Development</h1></div>
+        <section id="section-6-1">
+          <h2>6.1 — The Coordinate System Bug</h2>
+          <p>The symptom was that objects placed while the canvas was transformed would appear in the wrong spot after zoom or resize. The root cause was raw mouse coordinates being used without the normalizing transform.</p>
+          <p>The fix is to compute `canvasX = (mouseX - panX) / zoom` consistently in every placement and drag handler. The hard part is auditing every mouse event, because the mistake can hide in text placement, shape creation, and drag motion.</p>
+        </section>
+
+        <section id="section-6-2">
+          <h2>6.2 — Undo/Redo Sync Complexity</h2>
+          <p>Undo is inherently hard with multiple clients because each client may have a different view of history. The simplified approach chosen here is to treat undo as a shared command and broadcast it to all clients.</p>
+          <p>This means if two people undo at the same time, the room may apply two undos and remove more strokes than intended. It is acceptable for the current scope because the use case is light collaboration rather than strict operational transform precision.</p>
+        </section>
+
+        <section id="section-6-3">
+          <h2>6.3 — The Whiteboard.jsx vs WhiteboardPage.jsx Divergence</h2>
+          <p>There are two whiteboard implementations in the repo: `frontend/src/components/Whiteboard.jsx` and `frontend/src/pages/WhiteboardPage.jsx`. One is an embedded board used inside `BoardPage`, and the other is a standalone whiteboard page.</p>
+          <p>This divergence is dangerous because a bug fixed in one file may remain in the other. The long-term fix is to share core canvas logic via a common hook or shared component.</p>
+        </section>
+
+        <section id="section-6-4">
+          <h2>6.4 — Sticky Note Rotation Was Removed</h2>
+          <p>The initial design included visually rotated sticky notes to mimic analog paper. Rotation was removed because CSS `transform: rotate()` interfered with coordinate math for drag, resize, and collision boundaries.</p>
+          <p>That taught an important lesson: visual polish that breaks the coordinate system must be deferred until the underlying geometry is stable.</p>
+        </section>
+
+        <section id="section-6-5">
+          <h2>6.5 — TipTap Extension Choices</h2>
+          <p>The team seriously considered <code>@tiptap/extension-collaboration</code> and Yjs for the rich text editor. Yjs is a CRDT framework that enables true conflict-free concurrent editing. After evaluation, it was rejected because it introduces binary protocol encoding, an awareness layer, a separate Yjs document that must be synced alongside the React state, and significantly more complex setup — all for a feature (simultaneous editing in the same text block) that is rarely needed in this use case.</p>
+          <p>The chosen approach — debounced JSON sync every 2 seconds, applied only when the editor is not focused — handles the common case cleanly. Two users typing at the same moment may overwrite each other, but this is an acceptable tradeoff given the scope. The decision is clearly documented as a known limitation, not an oversight.</p>
+        </section>
+
+        <section id="section-6-6">
+          <h2>6.6 — Performance on Dense Whiteboards</h2>
+          <p>With many strokes and overlay objects, rendering all objects on every update can lag. The fix is to redraw only when necessary and keep object overlays in separate components so the DOM does not re-render the entire board on every keystroke.</p>
+          <p>In React, `useMemo`, `useCallback`, and stable dependencies help reduce needless updates. The repo already separates canvas stroke rendering from DOM overlays, which supports better performance.</p>
+        </section>
+      </section>
+
+      <section id="section-7" class="section">
+        <div class="section-title"><h1>SECTION 7 — Viva Q&A Preparation</h1></div>
+        <div class="details">
+          <summary>Category A — Fundamentals (10 questions)</summary>
+          <div class="content">
+            <ol>
+              <li><strong>What is WebSocket vs HTTP?</strong> HTTP is request/response, while WebSocket is a persistent bidirectional channel. For BlackBoard, HTTPS fetches page data and REST state, while Socket.io uses websockets for live whiteboard updates.</li>
+              <li><strong>Why use Socket.io over raw WebSocket?</strong> Socket.io adds reconnection, room management, and event namespaces. These features simplify real-time collaboration without building them from scratch.</li>
+              <li><strong>What is a REST API?</strong> A REST API exposes data and actions over HTTP using resource-oriented routes. BlackBoard uses REST for board creation, unlocking, and admin operations.</li>
+              <li><strong>What is MongoDB?</strong> MongoDB is a document database that stores JSON-like objects. It fits BlackBoard because board documents contain flexible arrays of strokes and overlay objects.</li>
+              <li><strong>Why NoSQL for this project?</strong> NoSQL is a good fit because the whiteboard schema is heterogeneous and evolves quickly. It avoids rigid relational migrations for object arrays and embedded rich objects.</li>
+              <li><strong>What is React?</strong> React is a UI library for building component-based interfaces. It is used here to render pages, toolbars, and overlay components declaratively.</li>
+              <li><strong>What is a React hook?</strong> A hook is a function like `useState` or `useEffect` that manages component lifecycle or state. BlackBoard uses hooks extensively for canvas setup, socket effects, and local interaction state.</li>
+              <li><strong>What is useEffect?</strong> `useEffect` runs side effects after render. This repo uses it to initialize sockets, fetch data, and subscribe to window events.</li>
+              <li><strong>What is useState?</strong> `useState` holds local component state. It is used for tool selection, stroke arrays, and UI toggles.</li>
+              <li><strong>What is a component?</strong> A component is a reusable piece of UI with its own rendering logic. BlackBoard composes pages from `WhiteboardPage`, `TextObject`, `ShapeObject`, and others.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="details">
+          <summary>Category B — Architecture (10 questions)</summary>
+          <div class="content">
+            <ol>
+              <li><strong>Why no Redux?</strong> The app is small enough to manage with local component state and prop drilling. Redux would add complexity without substantial benefit for the current feature set.</li>
+              <li><strong>Why no SQL?</strong> The data is document-oriented and flexible, so MongoDB is a better fit than a relational schema. SQL would require more rigid modeling for arrays of stroke objects and overlay metadata.</li>
+              <li><strong>How does real-time sync work?</strong> Client actions emit socket events to the server, which broadcasts them to the room. Other clients receive the event and update state accordingly.</li>
+              <li><strong>What happens if the server crashes?</strong> Active socket connections drop and clients reconnect. The backend persists board state periodically, so most progress is recovered from MongoDB after restart.</li>
+              <li><strong>How do you handle multiple users editing simultaneously?</strong> The app broadcasts edits in real time, but does not use a CRDT. Simultaneous edits can still overwrite each other, especially in the text editor.</li>
+              <li><strong>What is a Mongoose schema?</strong> It defines the shape of documents stored in MongoDB. `Board.js` and `Whiteboard.js` define fields, types, and defaults for persisted state.</li>
+              <li><strong>What is a socket room?</strong> A room is a logical group of connected sockets. BlackBoard uses rooms keyed by `boardId` or `whiteboardId` so only relevant clients receive events.</li>
+              <li><strong>Why is the socket server a relay?</strong> Because it forwards events with minimal processing. This keeps the architecture simple and avoids reimplementing the collaboration logic on the server.</li>
+              <li><strong>What is CORS and why do you need it?</strong> CORS controls which origins can access your API. The backend config allows the frontend origin so browser requests succeed from the deployed app.</li>
+              <li><strong>What is an environment variable?</strong> It is a configuration value available at runtime but not embedded in source code. BlackBoard uses them for <code>VITE_API_URL</code> on the frontend and <code>MONGO_URI</code>, <code>JWT_SECRET</code>, and <code>CLIENT_URL</code> on the backend.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="details">
+          <summary>Category C — Feature-Specific (10 questions)</summary>
+          <div class="content">
+            <ol>
+              <li><strong>How does undo/redo work?</strong> Undo removes the last stroke from the `strokes` array and emits a socket event. Redo restores the last popped stroke from `redoStack`.</li>
+              <li><strong>How does zoom work?</strong> The canvas container gets <code>transform: scale(zoom) translate(panX, panY)</code> with <code>transform-origin: 0 0</code>. Every mouse coordinate is then normalized: <code>canvasX = (mouseX - panX) / zoom</code>. Zooming centered on the cursor uses a ratio calculation to keep the point under the cursor stationary.</li>
+              <li><strong>How do you know where to place an object on the canvas?</strong> You take the raw mouse position relative to the canvas bounding rect, then subtract the pan offset and divide by zoom: <code>canvasX = (e.clientX - rect.left - panX) / zoom</code>. This gives the stable canvas-space coordinate that persists regardless of zoom or pan.</li>
+              <li><strong>How do attribution labels work?</strong> When a text object is created, it records <code>authorName</code>, <code>authorColor</code>, and <code>authorId</code> from the user's session. The AttributionLabel component renders permanently above the text box using absolute positioning (<code>top: -24px</code>). Because the color is stored on the object itself, it remains accurate even after the original user leaves.</li>
+              <li><strong>How does the command palette search?</strong> A global Ctrl+K listener in App.jsx opens the CommandPalette component. All boards and whiteboards are filtered using <code>title.toLowerCase().includes(query.toLowerCase())</code>. Arrow keys change an <code>activeIndex</code> state; Enter navigates to the selected board via React Router.</li>
+              <li><strong>How does TipTap save content?</strong> TipTap's <code>onUpdate</code> callback fires on every edit. A 2-second debounce then calls <code>socket.emit('text_update', { content: editor.getJSON() })</code> and saves the JSON to MongoDB. Other clients receive <code>receive_update</code> and apply it only if their editor is not focused, preventing cursor jumps.</li>
+              <li><strong>How does the QR code work?</strong> The ShareModal renders <code>&lt;QRCodeSVG value={boardUrl} size={160} /&gt;</code> from the qrcode.react library. The board URL is the full current window location. When scanned, the QR code navigates the scanner directly to the board — the QR encodes nothing more than a URL string.</li>
+              <li><strong>How do avatars get their colors?</strong> The server assigns colors deterministically by join order within the room. It counts existing users in <code>roomUsers[boardId]</code> and indexes into a 6-color palette. The assigned color is sent back to the client via the <code>joined_board</code> socket event and used for the avatar, attribution label, and cursor.</li>
+              <li><strong>How does soft delete work?</strong> A <code>PATCH /api/boards/:id/trash</code> request sets <code>isDeleted: true</code> on the document — it is never removed from MongoDB. The Trash page queries for <code>isDeleted: true</code>. The Restore action sets <code>isDeleted: false</code>. Permanent deletion calls a DELETE route that actually removes the document.</li>
+              <li><strong>How does the canvas grid render?</strong> CanvasGrid.jsx renders an SVG element absolutely positioned behind the canvas layer. It uses an SVG <code>&lt;pattern&gt;</code> element for dot or line grids, with the pattern offset adjusted by <code>panX % spacing</code> and <code>panY % spacing</code> so the grid appears to move with the canvas as you pan.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="details">
+          <summary>Category D — Security & Deployment (5 questions)</summary>
+          <div class="content">
+            <ol>
+              <li><strong>How do you prevent exposing secrets?</strong> Keep secrets in backend environment variables and never bake them into frontend bundles. The frontend only uses public API endpoints.</li>
+              <li><strong>What is JWT used for?</strong> JWT authenticates socket connections and admin requests. The server verifies the token before allowing room membership or protected admin operations.</li>
+              <li><strong>What is the difference between Vercel and Render?</strong> Vercel is ideal for static frontends and serverless functions, while Render is better for long-lived backend services and websockets. BlackBoard would use Vercel for the React app and Render for the Express API.</li>
+              <li><strong>What is MongoDB Atlas?</strong> Atlas is a managed cloud database service for MongoDB. It hosts the database cluster and provides connection strings, backup, and access control.</li>
+              <li><strong>Why does your backend go to sleep?</strong> On free tiers, platforms like Render may cold-start inactive apps. This introduces latency for the first request after idle time. You can mitigate this by pinging the backend on a schedule or upgrading to a paid tier.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="details">
+          <summary>Category E — Critique & Improvement (5 questions)</summary>
+          <div class="content">
+            <ol>
+              <li><strong>What would you do differently?</strong> I would separate socket logic into hooks, consolidate whiteboard components, and add a proper state layer for shared board context.</li>
+              <li><strong>How would you add proper authentication?</strong> Add user accounts, hashed passwords, session tokens, and access checks on every socket event. Use a shared identity service between the API and realtime server.</li>
+              <li><strong>What is a CRDT and when would you use one?</strong> A CRDT is a conflict-free replicated data type that enables concurrent edits without central locking. You would use it for true collaborative rich text or complex shared object state in high-collaboration scenarios.</li>
+              <li><strong>How would you scale this to 10,000 users?</strong> Use Redis pub/sub for socket rooms, shard the database, add horizontal backend instances, and separate static assets on a CDN.</li>
+              <li><strong>What is Redis and why might you need it?</strong> Redis is an in-memory datastore used for caching and pub/sub. You would need it when running multiple backend instances — Socket.io rooms exist in-process memory, so without Redis pub/sub, users on different server instances can't collaborate. It also helps cache frequently-accessed board data.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-8" class="section">
+        <div class="section-title"><h1>SECTION 8 — Glossary</h1></div>
+        <dl>
+          <dt><strong>WebSocket</strong></dt><dd>WebSocket is a persistent browser-server connection that allows bidirectional messages. In BlackBoard, it is used by Socket.io to keep collaboration live.</dd>
+          <dt><strong>Socket.io</strong></dt><dd>Socket.io is a library that wraps WebSocket and adds reconnection, rooms, and events. BlackBoard uses it for stroke sync, text updates, and presence.</dd>
+          <dt><strong>REST API</strong></dt><dd>A REST API is a set of HTTP routes for CRUD operations. BlackBoard uses REST for boards, whiteboards, and admin endpoints.</dd>
+          <dt><strong>HTTP</strong></dt><dd>HTTP is the protocol for web requests. It is used here to fetch initial page data and perform unlock calls.</dd>
+          <dt><strong>JSON</strong></dt><dd>JSON is the text format for data exchange. BlackBoard sends JSON payloads between frontend and backend.</dd>
+          <dt><strong>React</strong></dt><dd>React is the JavaScript library for building UI components. It renders the pages and dynamic toolbars in this app.</dd>
+          <dt><strong>Component</strong></dt><dd>A component is a reusable UI unit. Examples in BlackBoard are `WhiteboardPage` and `TextObject`.</dd>
+          <dt><strong>Hook</strong></dt><dd>A hook is a React function for state or lifecycle management. The app uses hooks like `useState` and `useEffect` everywhere.</dd>
+          <dt><strong>useState</strong></dt><dd>`useState` manages local component state. It holds the current tool, stroke list, and other interactive flags.</dd>
+          <dt><strong>useEffect</strong></dt><dd>`useEffect` runs side effects after render. It initializes sockets and listens for resize or unload events.</dd>
+          <dt><strong>useRef</strong></dt><dd>`useRef` stores mutable values that persist between renders. It is used for canvas refs, socket references, and live stroke buffers.</dd>
+          <dt><strong>useCallback</strong></dt><dd>`useCallback` memoizes functions. It helps prevent unnecessary rerenders in drag handlers and event callbacks.</dd>
+          <dt><strong>useMemo</strong></dt><dd>`useMemo` memoizes computed values. It can be used to optimize expensive render logic if added later.</dd>
+          <dt><strong>Context</strong></dt><dd>Context is React's shared state mechanism. This repo uses it sparingly, preferring props and simple state lifting.</dd>
+          <dt><strong>MongoDB</strong></dt><dd>MongoDB is a document database. It stores board and whiteboard documents in this application.</dd>
+          <dt><strong>Mongoose</strong></dt><dd>Mongoose is an ODM for MongoDB. It defines the `Board` and `Whiteboard` schemas used by the backend.</dd>
+          <dt><strong>Schema</strong></dt><dd>A schema defines document structure. `Board.js` and `Whiteboard.js` each define a schema for persistence.</dd>
+          <dt><strong>Document</strong></dt><dd>A document is a MongoDB record. The board document contains text, attachments, and whiteboard data.</dd>
+          <dt><strong>Express</strong></dt><dd>Express is the backend framework. It handles REST routes and middleware in `server.js`.</dd>
+          <dt><strong>Middleware</strong></dt><dd>Middleware is reusable request handling logic. The repo uses middleware for admin auth and error handling.</dd>
+          <dt><strong>CORS</strong></dt><dd>CORS controls cross-origin requests. The backend config allows the frontend origin to access the API.</dd>
+          <dt><strong>JWT</strong></dt><dd>JWT is a signed token format. BlackBoard uses it for socket auth and admin login.</dd>
+          <dt><strong>nanoid</strong></dt><dd>`nanoid` generates short unique IDs. It is used for board URL slugs.</dd>
+          <dt><strong>localStorage</strong></dt><dd>localStorage persists preferences in the browser. It stores the theme and admin token.</dd>
+          <dt><strong>contentEditable</strong></dt><dd>contentEditable makes DOM nodes editable. It is used for text objects and sticky note content.</dd>
+          <dt><strong>Canvas API</strong></dt><dd>The Canvas API draws strokes onto `&lt;canvas&gt;`. It powers the pen, eraser, and shape preview rendering.</dd>
+          <dt><strong>DOM</strong></dt><dd>The DOM is the browser's document tree. BlackBoard uses DOM overlays for text and object interactions.</dd>
+          <dt><strong>CSS Transform</strong></dt><dd>CSS transforms change element position and scale. Zoom/pan support would use transform on the canvas container.</dd>
+          <dt><strong>Zoom</strong></dt><dd>Zoom scales the drawing surface. It requires coordinate normalization for correct placement.</dd>
+          <dt><strong>Pan</strong></dt><dd>Pan shifts the view. It also requires coordinate compensation during interaction.</dd>
+          <dt><strong>Debounce</strong></dt><dd>Debounce delays repeated actions. The board editor uses delayed save status updates.</dd>
+          <dt><strong>Throttle</strong></dt><dd>Throttle limits event frequency. It is used for cursor-like drag sync and live object updates.</dd>
+          <dt><strong>Undo Stack</strong></dt><dd>An undo stack stores prior actions. BlackBoard keeps undone strokes in `redoStack`.</dd>
+          <dt><strong>CRDT</strong></dt><dd>A CRDT is a data structure for conflict-free distributed edits. The repo does not use CRDTs today.</dd>
+          <dt><strong>Yjs</strong></dt><dd>Yjs is a CRDT framework. It was intentionally excluded from this implementation.</dd>
+          <dt><strong>TipTap</strong></dt><dd>TipTap is a ProseMirror-based rich text editor framework with a modular extension system. BlackBoard uses it for the Board textboard tab, with extensions for headings, task lists, highlights, slash commands, and more.</dd>
+          <dt><strong>ProseMirror</strong></dt><dd>ProseMirror is the editor engine that TipTap is built on. It provides a structured document model and transaction-based editing. BlackBoard inherits ProseMirror's document tree via TipTap's JSON format for content storage.</dd>
+          <dt><strong>Vite</strong></dt><dd>Vite is a frontend build tool and dev server that uses native ES modules for near-instant hot reload. BlackBoard uses Vite instead of Create React App for its significantly faster development experience.</dd>
+          <dt><strong>Vercel</strong></dt><dd>Vercel is a frontend deployment platform. It is the natural host for the static React app.</dd>
+          <dt><strong>Render</strong></dt><dd>Render is a backend hosting service. It is recommended for the Express API and websocket server.</dd>
+          <dt><strong>Atlas</strong></dt><dd>Atlas is MongoDB's managed cloud offering. It is the likely database host for this app.</dd>
+          <dt><strong>Environment Variable</strong></dt><dd>An environment variable is runtime configuration. BlackBoard uses them for secrets and API endpoints.</dd>
+          <dt><strong>.gitignore</strong></dt><dd>`.gitignore` excludes generated files and secrets from source control. It should include `.env` and node_modules.</dd>
+          <dt><strong>Socket Room</strong></dt><dd>A socket room groups connections by board or whiteboard. It keeps events scoped to the right collaboration session.</dd>
+          <dt><strong>Emit</strong></dt><dd>Emit sends a socket event from client or server. BlackBoard emits updates such as `wb_draw_stroke` and `text_update`.</dd>
+          <dt><strong>Broadcast</strong></dt><dd>Broadcast sends a message to all other clients in a room. The server uses it to keep clients in sync.</dd>
+          <dt><strong>Relay</strong></dt><dd>A relay forwards messages without transforming them. The Socket.io server mostly relays events in this project.</dd>
+          <dt><strong>Singleton</strong></dt><dd>A singleton is a single shared instance. The socket client in <code>socket.js</code> is a singleton — it is initialized once and imported wherever needed, preventing duplicate socket connections across re-renders.</dd>
+          <dt><strong>Soft Delete</strong></dt><dd>Soft delete marks items as deleted (<code>isDeleted: true</code>) instead of removing them from the database. BlackBoard uses soft delete for boards and whiteboards so they can be recovered from the Trash view.</dd>
+          <dt><strong>Glassmorphism</strong></dt><dd>Glassmorphism is a translucent UI style. BlackBoard uses it in several cards and headers.</dd>
+          <dt><strong>Transform Origin</strong></dt><dd>Transform origin sets the pivot for CSS transforms. It is critical for correct zoom behavior.</dd>
+          <dt><strong>requestAnimationFrame</strong></dt><dd>`requestAnimationFrame` schedules smooth animation updates. It is used in overlay drag and canvas redraw logic.</dd>
+        </dl>
+      </section>
+
+      <section id="section-9" class="section">
+        <div class="section-title"><h1>SECTION 9 — Quick Reference Cards</h1></div>
+        <div class="card-grid">
+          <div class="card">
+            <h3>Socket Events Reference</h3>
+            <table>
+              <thead><tr><th>Event Name</th><th>Direction</th><th>Who emits</th><th>Who receives</th><th>Payload shape</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td>join_whiteboard</td><td>C→S</td><td>Frontend</td><td>Server</td><td><code>{ whiteboardId, userName }</code></td><td>Join room</td></tr>
+                <tr><td>wb_draw_sync</td><td>C→S</td><td>Frontend</td><td>Other clients</td><td><code>{ whiteboardId, stroke }</code></td><td>Live preview</td></tr>
+                <tr><td>wb_draw_stroke</td><td>C→S</td><td>Frontend</td><td>Other clients</td><td><code>{ whiteboardId, stroke }</code></td><td>Commit stroke</td></tr>
+                <tr><td>wb_image_added</td><td>C→S</td><td>Frontend</td><td>Other clients</td><td><code>{ whiteboardId, image }</code></td><td>Add object</td></tr>
+                <tr><td>wb_undo</td><td>C→S</td><td>Frontend</td><td>Other clients</td><td><code>{ whiteboardId }</code></td><td>Undo</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>MongoDB Schema Summary</h3>
+            <table>
+              <thead><tr><th>Schema</th><th>Key Fields</th><th>Purpose</th></tr></thead>
+              <tbody>
+                <tr><td>Board</td><td><code>boardId, boardName, content, unlockType, passwordHash, whiteboardData, expiresAfter</code></td><td>Persistent board documents with locks and shared data.</td></tr>
+                <tr><td>Whiteboard</td><td><code>whiteboardId, title, strokes, images, expiresAt</code></td><td>Standalone whiteboard state and metadata.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>Object Type Reference</h3>
+            <table>
+              <thead><tr><th>Type</th><th>Fields</th><th>Use</th></tr></thead>
+              <tbody>
+                <tr><td>text</td><td><code>id, type, x, y, width, height, content, color, fontSize, authorName</code></td><td>Editable text box.</td></tr>
+                <tr><td>shape</td><td><code>id, type, shapeType, x, y, width, height, color, strokeWidth</code></td><td>Geometric overlay.</td></tr>
+                <tr><td>sticky</td><td><code>id, type, x, y, width, height, content, color</code></td><td>Note card.</td></tr>
+                <tr><td>image</td><td><code>id, type, src, x, y, width, height</code></td><td>Uploaded image overlay.</td></tr>
+                <tr><td>path</td><td><code>id, type, tool, color, size, points</code></td><td>Canvas stroke data.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>Keyboard Shortcuts</h3>
+            <table>
+              <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>Ctrl/Cmd + K</td><td>Command palette (planned)</td></tr>
+                <tr><td>Space + drag</td><td>Pan canvas (planned)</td></tr>
+                <tr><td>Esc</td><td>Deactivate object / close menu</td></tr>
+                <tr><td>Ctrl/Cmd + Z</td><td>Undo (planned integration)</td></tr>
+                <tr><td>Ctrl/Cmd + Y</td><td>Redo (planned integration)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card">
+            <h3>Environment Variables</h3>
+            <table>
+              <thead><tr><th>Name</th><th>Where</th><th>What it contains</th><th>Required?</th></tr></thead>
+              <tbody>
+                <tr><td><code>VITE_API_URL</code></td><td>Frontend (.env)</td><td>Backend base URL — safe to expose, not a secret</td><td>Yes</td></tr>
+                <tr><td><code>JWT_SECRET</code></td><td>Backend (.env only — never frontend)</td><td>JWT signing secret for admin auth and socket auth</td><td>Yes</td></tr>
+                <tr><td><code>MONGO_URI</code></td><td>Backend (.env only — never frontend)</td><td>MongoDB Atlas connection string including credentials</td><td>Yes</td></tr>
+                <tr><td><code>CLIENT_URL</code></td><td>Backend (.env)</td><td>Frontend origin URL — used for CORS allowlist and share links</td><td>Yes</td></tr>
+                <tr><td><code>PORT</code></td><td>Backend (.env)</td><td>Port the Express server listens on (default 5000)</td><td>No</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-10" class="section">
+        <div class="section-title"><h1>SECTION 10 — One-Page Cheat Sheet</h1></div>
+        <div class="cheat-sheet">
+          <div class="cheat-grid">
+            <div>
+              <h3>5 Key Architectural Decisions</h3>
+              <ul class="cheat-list">
+                <li><strong>Socket.io relay-style sync</strong> — server forwards events without processing them, keeping the architecture stateless and simple.</li>
+                <li><strong>Unified object system</strong> — every canvas object shares <code>{ id, type, x, y, width, height }</code> so undo, sync, and rendering work identically for all types.</li>
+                <li><strong>No Redux / Zustand</strong> — local state + localStorage is sufficient at this scale; avoids unnecessary boilerplate.</li>
+                <li><strong>Debounced JSON sync for TipTap</strong> — 2-second debounce instead of Yjs/CRDT; simpler, reliable, good enough for one-editor-at-a-time usage.</li>
+                <li><strong>MongoDB with unified API responses</strong> — all views (Recent, Starred, Trash, All) are computed from the same collections with filters, not separate collections.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>5 Tricky Bugs &amp; Fixes</h3>
+              <ul class="cheat-list">
+                <li><strong>Objects placed at wrong position when zoomed</strong> — fix: normalize every mouse coordinate with <code>(mouseX - panX) / zoom</code> in every single handler.</li>
+                <li><strong>Undo desynced between tabs</strong> — fix: emit <code>wb_undo</code> socket event and apply the same state change on all clients.</li>
+                <li><strong>Whiteboard.jsx vs WhiteboardPage.jsx divergence</strong> — fix: unify core canvas logic into a shared component/hook so bug fixes apply to both.</li>
+                <li><strong>Sticky note rotation broke coordinate math</strong> — fix: remove rotation entirely; CSS <code>rotate()</code> transforms invalidate standard drag/resize math.</li>
+                <li><strong>Stroke loss on fast draw + reload</strong> — fix: flush strokes to MongoDB immediately on mouse-up, not on a delayed batch interval.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>5 Most Likely Viva Questions</h3>
+              <ul class="cheat-list">
+                <li><strong>Why MongoDB not SQL?</strong> — whiteboard objects are heterogeneous arrays; MongoDB's document model fits flexible, schema-light storage better than rigid relational tables.</li>
+                <li><strong>Why no Redux?</strong> — the app has a small number of screens and simple cross-component interactions; local state is sufficient and keeps code simpler.</li>
+                <li><strong>How does real-time sync work?</strong> — client emits a socket event → server relays to room → other clients update local state and re-render.</li>
+                <li><strong>What is the coordinate normalization formula?</strong> — <code>canvasX = (mouseX - panX) / zoom</code>; must be applied everywhere a mouse position maps to canvas space.</li>
+                <li><strong>How would you scale this?</strong> — Redis pub/sub for multi-instance socket rooms, horizontal backend scaling, MongoDB sharding, CDN for assets, and proper auth.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Tech Stack in One Line Per Technology</h3>
+              <ul class="cheat-list">
+                <li><strong>React 18 + Vite</strong> — UI library with fast ES-module dev server and hot reload.</li>
+                <li><strong>React Router v6</strong> — client-side routing with nested layouts and Outlet-based DashboardLayout.</li>
+                <li><strong>Socket.io</strong> — real-time WebSocket event transport with rooms, reconnect, and event API.</li>
+                <li><strong>TipTap</strong> — ProseMirror-based rich text editor with extensions for formatting, tasks, highlights, and slash commands.</li>
+                <li><strong>Express</strong> — backend REST API and Socket.io host, handles CORS, auth middleware, and routes.</li>
+                <li><strong>MongoDB + Mongoose</strong> — document persistence for boards, whiteboards, and all overlay objects.</li>
+                <li><strong>JWT</strong> — signed token for admin authentication and socket room authorization.</li>
+                <li><strong>react-hot-toast</strong> — all user feedback toasts, replacing every alert() in the codebase.</li>
+                <li><strong>qrcode.react</strong> — SVG QR code generation for the Share Modal, no server required.</li>
+                <li><strong>Lucide React</strong> — tree-shakable SVG icon library used across toolbar and nav.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const sidebarLinks = document.querySelectorAll('.sidebar nav a');
+    const sections = Array.from(sidebarLinks).map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+
+    const updateActiveLink = () => {
+      const scrollPos = window.scrollY + 120;
+      let activeIndex = 0;
+      sections.forEach((section, index) => {
+        if (section.offsetTop <= scrollPos) activeIndex = index;
+      });
+      sidebarLinks.forEach((link, idx) => {
+        link.classList.toggle('active', idx === activeIndex);
+      });
+    };
+
+    window.addEventListener('scroll', () => {
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = docHeight > 0 ? (window.scrollY / docHeight) * 100 : 0;
+      document.getElementById('progressBar').style.width = progress + '%';
+      updateActiveLink();
+    });
+
+    document.querySelectorAll('.code-block button.copy-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        const code = button.nextElementSibling.innerText;
+        navigator.clipboard.writeText(code).then(() => {
+          const previous = button.innerText;
+          button.innerText = 'Copied';
+          setTimeout(() => { button.innerText = previous; }, 1200);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

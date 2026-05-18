@@ -1,1200 +1,1064 @@
-# BlackBoard — Revised Antigravity Build Prompts
-# Updated based on architectural review feedback
-# Version 2.0
+# BlackBoard — Antigravity Implementation Plan
+# Version 3.0 — Remaining Features + Safety Audit
+# Generated: May 2026
 
 ---
 
-## ⚠️ CRITICAL RULES — Read Before Starting Any Prompt
+## CONTEXT
 
-1. **Stability over features** — fix bugs before adding anything new
-2. **One prompt at a time** — test fully before moving to next
-3. **No Redux, no Zustand** — local state + minimal context only
-4. **No extra MongoDB collections** — compute recent/starred/trash from existing data
-5. **Normalize all API responses** — unified `{ id, type, title, updatedAt, starred }` format
-6. **Subtle glassmorphism only** — mostly solid surfaces, blur used sparingly
-7. **Coordinate math must account for zoom** — always divide by zoom factor
+The following bugs are **already fixed** and must NOT be re-touched:
+- Sticky note text overflow
+- Stroke loss on fast draw + reload
+- Locked whiteboard missing shapes/stickies
+- Locked vs standalone whiteboard parity (Whiteboard.jsx / WhiteboardPage.jsx divergence)
 
----
-
-## BUILD ORDER (non-negotiable)
-
-```
-Step 0 → Stabilize whiteboard (before anything else)
-Step 1 → Sidebar + DashboardLayout shell
-Step 2 → Unified board API + board cards
-Step 3 → Star + Soft delete (Trash)
-Step 4 → Shapes + Sticky notes (simplified)
-Step 5 → Zoom + Pan
-Step 6 → Rich text editor (TipTap, no Yjs)
-Step 7 → Presence + Avatars + Share
-Step 8 → Command palette
-Step 9 → Final polish
-```
+This plan covers only **unimplemented or semi-implemented** features from the original spec, plus a security/architecture safety report.
 
 ---
 
----
+## PHASE 0 — FRONTEND FILE AUDIT (Run Before Anything)
 
-# PROMPT 0 — Whiteboard Stabilization (DO THIS FIRST)
+Before writing a single line of feature code, scan the frontend for files that should not exist there.
 
-> Before building anything new, perform a full stability audit of the existing whiteboard system. Do NOT add any features. Only fix bugs.
->
-> **Test and fix these specific things:**
->
-> **1. Object system audit:**
-> - Verify ALL object types (pen strokes, text, images) share a unified structure:
->   ```js
->   { id, type, x, y, width, height, ...typeSpecificFields }
->   ```
-> - If any object type does NOT follow this structure, refactor it to match
-> - This unified structure is required before shapes and sticky notes can be added
->
-> **2. Drag and resize audit:**
-> - Test dragging text objects — does it work smoothly without jitter?
-> - Test dragging image objects — does aspect ratio hold?
-> - Test resize handles on all object types — do corners respond correctly?
-> - Fix any jitter, jumping, or incorrect positioning
->
-> **3. Undo/Redo audit:**
-> - Test undo after: drawing a stroke, adding text, adding image, moving an object
-> - Test redo after undoing each of the above
-> - Verify undo/redo syncs to all connected users via Socket.io
-> - Fix any cases where undo produces incorrect state
->
-> **4. Real-time sync audit:**
-> - Open same whiteboard in TWO browser tabs
-> - Draw in tab 1 → verify appears in tab 2
-> - Add text in tab 1 → verify in tab 2
-> - Move object in tab 1 → verify in tab 2
-> - Undo in tab 1 → verify correct state in tab 2
-> - Fix any sync inconsistencies
->
-> **5. Performance audit:**
-> - Add 20+ objects to whiteboard
-> - Verify no lag when drawing
-> - Verify no lag when moving objects
-> - If lag exists: profile and fix the render loop
->
-> **6. Edge cases:**
-> - What happens if two users move the same object simultaneously? Document the behavior.
-> - What happens if socket disconnects mid-draw? Verify graceful recovery.
-> - What happens if MongoDB save fails? Verify no data corruption.
->
-> **After fixing everything:**
-> - Write a brief summary of what was fixed
-> - Confirm the object system is unified and ready for new object types
-> - Only then proceed to Prompt 1
+### Files That Must NOT Be in the Frontend
 
----
+| What to look for | Why it's dangerous |
+|---|---|
+| `.env` files with secrets | Exposes API keys, DB URIs to the browser |
+| Any file containing `MONGO_URI`, `JWT_SECRET`, `DB_PASSWORD` | Credentials visible in source |
+| Server-side route files (`routes/`, `controllers/`, `middleware/`) committed to `client/src/` | Business logic exposed |
+| Admin credential files (e.g., `adminConfig.js` with hardcoded passwords) | Security hole |
+| Raw Mongoose model files in `client/` | Schema leakage |
+| `node_modules` committed to git | Bloat and potential supply chain issues |
 
----
-
-# PROMPT 1 — Sidebar + Dashboard Shell
-
-> Redesign the navigation and dashboard of BlackBoard to feel like a premium workspace (Notion/Linear/Eraser.io aesthetic). Do NOT break any existing functionality.
->
-> ---
->
-> ## IMPORTANT ARCHITECTURAL RULES FOR THIS PROMPT
->
-> - Use local component state only — no global state management
-> - Username comes from `localStorage.getItem('bb_user_name')` — no auth system
-> - Glassmorphism: use SPARINGLY — mostly solid surfaces `#0d0d1a` and `#151524`
-> - Sidebar navigation: maximum 6 items — keep it compact and intentional
-> - Do NOT animate aggressively — subtle transitions only
->
-> ---
->
-> ## 1. NEW COMPONENT: `DashboardLayout.jsx`
->
-> Create a layout wrapper used by all non-canvas pages:
-> - Fixed left sidebar (240px) + main content area (flex-1)
-> - Sidebar collapsible to 48px icon-only mode via toggle button
-> - Collapse state stored in localStorage
-> - Responsive: sidebar hidden on mobile (<768px), accessible via hamburger
-> - Transition: `width 250ms ease` only — no aggressive animations
->
-> ```
-> Layout structure:
-> ┌─────────────┬──────────────────────────────┐
-> │   Sidebar   │   Top bar                    │
-> │   240px     │   ──────────────────────     │
-> │             │   Page content               │
-> │             │                              │
-> └─────────────┴──────────────────────────────┘
-> ```
->
-> ---
->
-> ## 2. SIDEBAR CONTENT
->
-> **Top section:**
-> - Logo: BlackBoard icon + wordmark in gold `#C9A84C`
-> - Collapse toggle: `ChevronLeft` / `ChevronRight` Lucide icon
-> - Search bar (placeholder, clicking opens Command Palette later)
->
-> **Navigation — exactly 6 items:**
-> ```
-> Home          (Lucide: Home)
-> All Boards    (Lucide: Layout)
-> Whiteboards   (Lucide: PenTool)
-> Starred       (Lucide: Star)
-> Trash         (Lucide: Trash2)
-> ─────────────────────────────
-> Admin         (Lucide: Shield) — only show if JWT in localStorage
-> ```
->
-> Active state: gold left border `3px solid #C9A84C`, gold text, background `rgba(201,168,76,0.08)` — NO blur
->
-> **Bottom section:**
-> - Username from localStorage
-> - Theme toggle (dark/light)
-> - Logout button (clears localStorage, redirects to landing)
->
-> **Sidebar colors:**
-> ```
-> Dark:  background #0d0d1a, border-right 1px solid rgba(201,168,76,0.12)
-> Light: background #fdf6ee, border-right 1px solid rgba(201,168,76,0.2)
-> ```
->
-> ---
->
-> ## 3. TOP BAR (inside main content area)
->
-> - Left: current page title (dynamic, matches active nav item)
-> - Right: `+ New Board` gold button + `+ New Whiteboard` ghost button
-> - Height: 56px, border-bottom: `1px solid rgba(201,168,76,0.1)`
-> - Background: same as page background — NO blur or glassmorphism here
->
-> ---
->
-> ## 4. HOME/DASHBOARD PAGE
->
-> **Welcome header:**
-> - `Welcome back, [name from localStorage] 👋` — Playfair Display font
-> - Subtitle: `Create, collaborate, and bring ideas to life.` — muted text
->
-> **Quick Actions (3 cards in a row):**
-> ```
-> 🎨 New Whiteboard   — "Infinite canvas for drawing and brainstorming"
-> 📝 New Textboard    — "Rich text editor for notes and docs"
-> 📎 Upload to Board  — "Add files and images to a board"
-> ```
-> Card style: solid background `#151524` (dark) / `#fff8f0` (light), gold border on hover `rgba(201,168,76,0.4)`, NO blur
->
-> **Recent Boards grid:**
-> - Title: "Recent Boards" + "View all →" link
-> - Grid: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, gap 16px
-> - Shows last 6 boards sorted by `lastOpenedAt`
-> - See Board Card spec below
->
-> **Recent Whiteboards grid:**
-> - Same layout, below Recent Boards
-> - Shows last 6 whiteboards sorted by `lastOpenedAt`
->
-> ---
->
-> ## 5. BOARD CARD COMPONENT (`BoardCard.jsx`)
->
-> Reusable card used in all grid views:
->
-> **Card anatomy:**
-> ```
-> ┌─────────────────────────────┐
-> │  Thumbnail (gradient top)   │ ← 120px height colored gradient
-> ├─────────────────────────────┤
-> │  ★  Board Name         ⋯   │ ← star icon left, 3-dot menu right
-> │  [Whiteboard] · 2h ago      │ ← type badge + last updated
-> └─────────────────────────────┘
-> ```
->
-> **Thumbnail gradients:**
-> - Whiteboard: `linear-gradient(135deg, #1a1530, #2d1f4a)` with lavender tint
-> - Textboard: `linear-gradient(135deg, #1a1a0d, #2a2010)` with gold tint
->
-> **Interactions:**
-> - Hover: `translateY(-3px)`, border brightens to `rgba(201,168,76,0.5)` — transition 200ms
-> - Star icon: click toggles starred state, calls `PATCH /api/boards/:id/star`
-> - Three-dot menu: shows dropdown with Open, Rename, Move to Trash
-> - Click card → navigate to board
->
-> **Card style:**
-> - Background: `#151524` (dark) / `#fff8f0` (light)
-> - Border: `1px solid rgba(201,168,76,0.15)`
-> - Border-radius: 10px
-> - NO glassmorphism
->
-> ---
->
-> ## 6. ALL BOARDS PAGE
->
-> - Unified grid of all non-deleted boards AND whiteboards
-> - Sort controls: Recently Updated | Name A-Z | Date Created
-> - Filter tabs: All | Textboards | Whiteboards | Starred
-> - Uses same BoardCard component
-> - Empty state: Layout icon (large, muted) + "No boards yet" + create button
->
-> ---
->
-> ## 7. STARRED PAGE
->
-> - Grid of all boards/whiteboards where `starred: true`
-> - Same BoardCard component
-> - Empty state: Star icon + "Nothing starred yet" + instruction text
->
-> ---
->
-> ## 8. TRASH PAGE
->
-> - Grid of all boards/whiteboards where `isDeleted: true`
-> - BoardCard shows with reduced opacity (0.7)
-> - Context menu: Restore | Permanently Delete
-> - Empty state: Trash2 icon + "Trash is empty"
->
-> ---
->
-> ## 9. BACKEND CHANGES
->
-> **Schema additions (Board.js AND Whiteboard.js):**
-> ```js
-> starred:      { type: Boolean, default: false }
-> lastOpenedAt: { type: Date, default: Date.now }
-> isDeleted:    { type: Boolean, default: false }
-> ```
->
-> **New routes — compute from existing data, NO new collections:**
-> ```
-> GET    /api/unified/recent     → last 6 boards + last 6 whiteboards by lastOpenedAt
-> GET    /api/unified/starred    → all starred boards + whiteboards
-> GET    /api/unified/trash      → all isDeleted boards + whiteboards
-> GET    /api/unified/all        → all non-deleted boards + whiteboards
-> PATCH  /api/boards/:id/star        → toggle starred
-> PATCH  /api/whiteboards/:id/star   → toggle starred
-> PATCH  /api/boards/:id/trash       → toggle isDeleted (soft delete)
-> PATCH  /api/whiteboards/:id/trash  → toggle isDeleted
-> ```
->
-> **CRITICAL — normalize all API responses:**
-> Every item returned must follow this exact shape:
-> ```js
-> {
->   id,           // boardId or whiteboardId
->   type,         // 'board' or 'whiteboard'
->   title,        // boardName or title
->   updatedAt,    // lastOpenedAt
->   createdAt,
->   starred,
->   isDeleted
-> }
-> ```
-> Do NOT send raw Mongoose documents to the frontend.
->
-> **Update `lastOpenedAt`** on every `GET /api/boards/:id` and `GET /api/whiteboards/:id` request.
->
-> ---
->
-> ## 10. RESPONSIVE BEHAVIOR
->
-> - Desktop (>1024px): sidebar 240px always visible
-> - Tablet (768-1024px): sidebar collapsed to 48px by default
-> - Mobile (<768px): sidebar hidden, hamburger button in top bar opens it as overlay
->
-> ---
->
-> ## FINAL RULES
-> - Keep ALL existing routes and board/whiteboard functionality intact
-> - Keep existing theme toggle working
-> - Use Lucide React for all icons — no emoji in nav
-> - After building: list every new file created and every modified file
-> - Run `npm run dev` and confirm zero console errors before finishing
-
----
-
----
-
-# PROMPT 2 — Shapes + Sticky Notes (Simplified & Stable)
-
-> Add shapes and sticky notes to the whiteboard. Keep the implementation focused and stable — do NOT implement connectors or rubber-band multi-select in this prompt (those are risky and can be added later).
->
-> ---
->
-> ## CRITICAL ARCHITECTURAL REQUIREMENT
->
-> ALL new objects MUST follow the unified object structure:
-> ```js
-> {
->   id,           // nanoid()
->   type,         // 'shape' | 'sticky'
->   x,
->   y,
->   width,
->   height,
->   ...typeSpecificFields
-> }
-> ```
-> This ensures undo/redo, sync, and selection work correctly for all object types.
->
-> ---
->
-> ## TOOL 1 — SHAPES
->
-> Add a Shapes tool to the toolbar (Lucide: `Square` icon):
->
-> **Shapes available:**
-> - Rectangle
-> - Circle / Ellipse
-> - Triangle
-> - Diamond
->
-> Show as a small popover when Shapes tool is clicked.
->
-> **Drawing behavior:**
-> - Click and drag on canvas → draws shape
-> - Shape preview shown during drag (dashed border)
-> - On mouse release → shape becomes a DOM overlay object
->
-> **Shape object structure:**
-> ```js
-> {
->   id,
->   type: 'shape',
->   shapeType: 'rect' | 'circle' | 'triangle' | 'diamond',
->   x, y, width, height,
->   color,        // border color, follows current selected color
->   fill,         // 'transparent' by default
->   label: ''     // optional text inside shape
-> }
-> ```
->
-> **Shape DOM overlay:**
-> - Renders as a positioned div over the canvas
-> - Uses CSS border-radius/clip-path for circle/triangle/diamond shapes
-> - Resize handles on 4 corners (drag to resize)
-> - Context menu on hover: Move | Resize | Change Color | Fill | Delete
-> - Double click → editable label appears inside shape (contentEditable)
->
-> **Coordinate fix for zoom:**
-> When placing shape, calculate:
-> ```js
-> const canvasX = (mouseX - panX) / zoom
-> const canvasY = (mouseY - panY) / zoom
-> ```
-> Use these values for x, y — NOT raw mouse coordinates.
->
-> ---
->
-> ## TOOL 2 — STICKY NOTES
->
-> Add a Sticky Note tool to the toolbar (Lucide: `StickyNote` icon):
->
-> **Behavior:**
-> - Click anywhere on canvas → places a sticky note at that position
-> - Default size: 160px × 160px
-> - Editable immediately on placement (contentEditable focused)
->
-> **Sticky note object structure:**
-> ```js
-> {
->   id,
->   type: 'sticky',
->   x, y,
->   width: 160, height: 160,
->   color: '#C9A84C',   // background color
->   content: '',
->   rotation: 0         // keep 0 for now — no random rotation (causes sync issues)
-> }
-> ```
->
-> **Sticky note appearance:**
-> - Colored background (follows selected color from palette)
-> - Color palette for stickies: gold `#C9A84C`, blush pink `#ED93B1`, lavender `#AFA9EC`, mint `#6EC9A8`, white `#FFFEF0`
-> - Font: Inter 13px, text color `#2a1f0e` (always dark regardless of theme)
-> - Subtle drop shadow: `0 2px 8px rgba(0,0,0,0.2)`
-> - NO random rotation — keep at 0deg (rotation causes coordinate calculation bugs)
->
-> **Sticky note interactions:**
-> - Drag to move (same as existing ImageObject drag)
-> - Resize by dragging bottom-right corner
-> - Context menu: Edit | Change Color | Delete
-> - Click outside → deselect and save content
->
-> ---
->
-> ## UNDO/REDO FOR NEW OBJECTS
->
-> Ensure undo/redo works for:
-> - Adding a shape → undo removes it
-> - Adding a sticky note → undo removes it
-> - Moving a shape → undo returns it to previous position
-> - Deleting a shape → undo restores it
->
-> Use the EXISTING undo stack — do NOT create a new one.
->
-> ---
->
-> ## REAL-TIME SYNC
->
-> Use EXISTING Socket.io events — do NOT add new event names:
-> ```
-> wb_draw_stroke    → send new shape/sticky object
-> wb_receive_stroke → receive and render on other clients
-> wb_undo           → existing undo sync
-> ```
->
-> The object `type` field distinguishes between strokes, shapes, and stickies.
->
-> ---
->
-> ## TOOLBAR UPDATE
->
-> Updated toolbar order:
-> ```
-> Select | Pan | Pen | Shapes▾ | Sticky | Eraser | Text | Image | ─── | Color | Size | ─── | Undo | Redo
-> ```
->
-> Keep toolbar clean — Shapes opens a popover, no additional toolbar expansion.
->
-> ---
->
-> ## WHAT TO SKIP IN THIS PROMPT
->
-> ❌ Connector/arrow tool — too complex, implement separately later
-> ❌ Rubber-band multi-select — too complex, implement separately later
-> ❌ Keyboard shortcuts — add in Polish prompt
-> ❌ Shape-to-shape connections — skip entirely for now
->
-> ---
->
-> ## FINAL RULES
-> - Test with two browser tabs — shapes and stickies must sync in real time
-> - Test undo/redo for all new object types
-> - Verify coordinate calculation accounts for zoom (even though zoom isn't built yet — use zoom=1 placeholder)
-> - Run `npm run dev` — zero console errors
-
----
-
----
-
-# PROMPT 3 — Zoom + Pan (No Minimap for Now)
-
-> Add zoom and pan to the whiteboard canvas. This is foundational — must be done carefully. Skip the minimap for now (adds complexity for little gain at this stage).
->
-> ---
->
-> ## ⚠️ MOST IMPORTANT RULE IN THIS PROMPT
->
-> When zoom is applied via CSS transform, ALL mouse coordinates must be normalized:
-> ```js
-> const canvasX = (mouseX - canvasRect.left - panX) / zoom
-> const canvasY = (mouseY - canvasRect.top - panY) / zoom
-> ```
-> Apply this EVERYWHERE mouse position is used:
-> - Drawing pen strokes
-> - Placing shapes/stickies/text
-> - Dragging objects
-> - Resize handles
-> - Selection
->
-> Failure to normalize = broken dragging, broken placement, broken resize.
->
-> ---
->
-> ## ZOOM STATE
->
-> ```js
-> const [zoom, setZoom] = useState(1)      // 1 = 100%
-> const [panX, setPanX] = useState(0)
-> const [panY, setPanY] = useState(0)
-> ```
->
-> Apply via CSS transform on the canvas container:
-> ```js
-> style={{
->   transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
->   transformOrigin: '0 0'
-> }}
-> ```
->
-> ---
->
-> ## ZOOM CONTROLS
->
-> Add to bottom-right corner of whiteboard:
-> ```
-> [ − ]  [ 75% ]  [ + ]  [ Fit ]
-> ```
->
-> - `−`: zoom out 10%, minimum 10% (`zoom = Math.max(0.1, zoom - 0.1)`)
-> - `+`: zoom in 10%, maximum 400% (`zoom = Math.min(4, zoom + 0.1)`)
-> - Percentage display: shows current zoom, click to type exact value
-> - `Fit`: calculate zoom to fit all objects in viewport, center them
->
-> **Zoom centered on cursor (Ctrl + scroll):**
-> ```js
-> const zoomAt = (mouseX, mouseY, delta) => {
->   const newZoom = Math.max(0.1, Math.min(4, zoom + delta))
->   const zoomRatio = newZoom / zoom
->   setPanX(mouseX - zoomRatio * (mouseX - panX))
->   setPanY(mouseY - zoomRatio * (mouseY - panY))
->   setZoom(newZoom)
-> }
-> ```
->
-> **Zoom style:**
-> ```
-> Dark:  background #151524, text #C9A84C, border rgba(201,168,76,0.2)
-> Light: background #fff8f0, text #C9A84C
-> Border-radius: 8px, padding: 6px 12px
-> ```
->
-> ---
->
-> ## PAN BEHAVIOR
->
-> Three ways to pan:
->
-> **1. Space + drag:**
-> - Hold Space → cursor changes to `grab`
-> - Mouse down → cursor changes to `grabbing`, start tracking drag delta
-> - Mouse move → update panX, panY by drag delta
-> - Mouse up / Space release → stop panning
->
-> **2. Middle mouse button drag:**
-> - `onMouseDown` with `event.button === 1` → start pan
->
-> **3. Pan tool active (H key or toolbar):**
-> - Left click drag → pan
->
-> ---
->
-> ## KEYBOARD SHORTCUTS FOR ZOOM/PAN
->
-> ```
-> Ctrl + =     → Zoom in
-> Ctrl + -     → Zoom out
-> Ctrl + 0     → Reset to 100%
-> Ctrl + Shift + F  → Fit to view
-> Space + drag → Pan
-> ```
->
-> ---
->
-> ## FIT TO VIEW
->
-> Calculate bounding box of all objects, then:
-> ```js
-> const fitZoom = Math.min(
->   viewportWidth / (contentWidth + 80),
->   viewportHeight / (contentHeight + 80),
->   1  // never zoom in above 100% when fitting
-> )
-> ```
-> Center the content in the viewport.
->
-> ---
->
-> ## WHAT TO SKIP IN THIS PROMPT
->
-> ❌ Minimap — adds complexity, skip for now
-> ❌ Canvas grid background — add in Polish prompt
-> ❌ Minimap dragging — skip entirely
->
-> ---
->
-> ## FINAL RULES
-> - After building: test EVERY existing tool still works correctly with zoom at 50%, 100%, 200%
-> - Test drag object at 200% zoom — must not jump
-> - Test place sticky note at 150% zoom — must appear at correct position
-> - Test undo after zoomed operations — must work correctly
-> - Two-tab sync must still work after zoom changes
-
----
-
----
-
-# PROMPT 4 — Rich Text Editor (TipTap, No Yjs)
-
-> Upgrade the existing Note/Textboard editor to use TipTap. Use debounced JSON sync — do NOT use Yjs or TipTap's collaboration extension.
->
-> ---
->
-> ## ⚠️ CRITICAL — DO NOT USE THESE
->
-> ❌ `@tiptap/extension-collaboration` — introduces Yjs, way too complex
-> ❌ `@tiptap/extension-collaboration-cursor` — same reason
-> ❌ Any CRDT library
->
-> Use debounced JSON sync instead — simple, reliable, good enough.
->
-> ---
->
-> ## INSTALL
->
-> ```bash
-> npm install @tiptap/react @tiptap/pm @tiptap/starter-kit
-> npm install @tiptap/extension-placeholder
-> npm install @tiptap/extension-color @tiptap/extension-text-style
-> npm install @tiptap/extension-highlight
-> npm install @tiptap/extension-task-list @tiptap/extension-task-item
-> npm install @tiptap/extension-image @tiptap/extension-link
-> npm install @tiptap/extension-typography
-> ```
->
-> ---
->
-> ## EDITOR SETUP
->
-> ```js
-> const editor = useEditor({
->   extensions: [
->     StarterKit,
->     Placeholder.configure({ placeholder: "Start writing, or type '/' for commands..." }),
->     Typography,
->     Color, TextStyle,
->     Highlight.configure({ multicolor: true }),
->     TaskList, TaskItem.configure({ nested: true }),
->     Image, Link,
->   ],
->   content: board.content,   // load from MongoDB
->   onUpdate: ({ editor }) => {
->     debouncedSave(editor.getJSON())   // debounce 2 seconds
->   }
-> })
-> ```
->
-> ---
->
-> ## TOOLBAR
->
-> Fixed toolbar above editor (NOT floating to avoid complexity):
->
-> ```
-> B  I  U  S  |  H1  H2  H3  |  •  1.  ☑  |  "  ─  |  </>  |  🔗
-> ```
->
-> All using TipTap commands via `editor.chain().focus()...`
->
-> **Bubble toolbar (floating on text selection):**
-> - Appears above selected text
-> - Options: Bold | Italic | Link | Highlight | Code
-> - Simple, small, 5 options maximum
->
-> ---
->
-> ## SLASH COMMANDS
->
-> Type `/` anywhere → show a simple dropdown menu:
-> ```
-> /h1       → Heading 1
-> /h2       → Heading 2
-> /h3       → Heading 3
-> /bullet   → Bullet list
-> /todo     → Task list
-> /code     → Code block
-> /quote    → Blockquote
-> /divider  → Horizontal rule
-> ```
->
-> Implementation: listen for `/` keydown → show positioned dropdown → filter as user types → apply on Enter/click.
->
-> ---
->
-> ## SECTIONS PANEL (KEEP SIMPLE)
->
-> Collapsible left panel (180px) showing H1 and H2 headings:
-> - Extract headings from `editor.getJSON()` on every update
-> - Render as clickable list items
-> - Click → `editor.commands.scrollIntoView()` to that heading
-> - Toggle button to show/hide panel
-> - Keep it simple — just a plain list, no drag-to-reorder
->
-> ---
->
-> ## REAL-TIME SYNC (DEBOUNCED)
->
-> ```js
-> // On editor update (debounced 2 seconds):
-> socket.emit('text_update', {
->   content: editor.getJSON()   // send full JSON, not delta
-> })
->
-> // On receive:
-> socket.on('receive_update', ({ content }) => {
->   // Only update if editor is not focused (avoid fighting the user)
->   if (!editor.isFocused) {
->     editor.commands.setContent(content, false)
->   }
-> })
-> ```
->
-> This is simple and works well for non-simultaneous editing.
->
-> ---
->
-> ## AUTO-SAVE INDICATOR
->
-> Show in top bar:
-> - While typing: `Saving...` in muted text
-> - After save completes: `Saved ✓` in gold, fades after 2 seconds
->
-> ---
->
-> ## STYLING
->
-> ```
-> Editor container max-width:   720px, centered
-> Editor padding:               40px 48px
-> Background dark:              #0d0d1a
-> Background light:             #fdf6ee
-> Text dark:                    #f5ecd7
-> Text light:                   #2a1f0e
-> Heading color:                same as text, bolder
-> Blockquote:                   border-left 4px solid #C9A84C, padding-left 16px, italic
-> Code block bg dark:           #151524
-> Code block bg light:          #fff8f0
-> Code font:                    JetBrains Mono, 13px
-> Link color:                   #C9A84C, underlined
-> Task checkbox:                gold accent when checked
-> Placeholder:                  muted color, italic
-> ```
->
-> ---
->
-> ## BOTTOM BAR
->
-> Below editor, small text:
-> ```
-> [word count] words · [char count] characters
-> ```
->
-> ---
->
-> ## WHAT TO SKIP IN THIS PROMPT
->
-> ❌ Collaborator cursors in TipTap — too complex
-> ❌ Export as Markdown — add later if time
-> ❌ Inline comments — skip
->
-> ---
->
-> ## FINAL RULES
-> - Existing board content must load correctly
-> - Auto-save every 2 seconds while typing
-> - Test: type in tab 1, content appears in tab 2 after 2 second debounce
-> - Run `npm run dev` — zero console errors
-
----
-
----
-
-# PROMPT 5 — Presence, Avatars & Share
-
-> Add user presence (avatars, online count) and a share modal. Keep cursor presence OPTIONAL — implement avatars first, cursors only if avatars are stable.
->
-> ---
->
-> ## 1. USERNAME PROMPT
->
-> On first visit to ANY board or whiteboard:
-> - If `localStorage.getItem('bb_user_name')` is null → show modal
-> - Modal: friendly, centered, glassmorphism card
-> - Title: "What should we call you?"
-> - Input: name field, autofocused
-> - Button: "Let's go" (gold)
-> - Skip link: "Skip — use Anonymous"
-> - On confirm: `localStorage.setItem('bb_user_name', name)`
-> - Modal never shows again after name is set
->
-> ---
->
-> ## 2. COLLABORATOR AVATARS
->
-> Show in top bar of every board/whiteboard — right side, before Share button:
->
-> **Avatar circle:**
-> - 32px diameter circle
-> - Background: one of 5 colors assigned by userId hash:
->   `['#C9A84C', '#ED93B1', '#AFA9EC', '#6EC9A8', '#E8956D']`
-> - Shows user initials (first letter of name, uppercase)
-> - Font: Inter 13px bold, text color `#0d0d1a`
->
-> **Stacked display:**
-> - Max 4 avatars visible, stacked with -8px margin
-> - If 5+ users: show `+N` circle in muted style
-> - Tooltip on hover: full username
-> - Fade in on join, fade out on leave (300ms transition)
->
-> **Socket events:**
-> ```js
-> // On join board:
-> socket.emit('user_joined', { userName, color, boardId })
->
-> // Server broadcasts to room:
-> socket.on('user_list', ({ users }) => setActiveUsers(users))
->
-> // On disconnect (server detects):
-> socket.on('user_left', ({ userId }) => removeUser(userId))
-> ```
->
-> **Online indicator:**
-> - Left of avatars: `● 3 online` in `#1D9E75`
-> - Updates in real time
->
-> ---
->
-> ## 3. CURSOR PRESENCE (Whiteboard only — implement AFTER avatars work)
->
-> ⚠️ Only implement this if avatars are stable and working.
->
-> **Cursor broadcast — throttled to every 50ms (20fps):**
-> ```js
-> socket.emit('cursor_move', {
->   userId, userName, color,
->   x: canvasX,   // normalized for zoom
->   y: canvasY
-> })
-> ```
->
-> **Cursor display:**
-> - Each remote user: a 20px arrow cursor SVG in their color
-> - Name label: small pill below cursor, same color, white text, 11px
-> - CSS transition: `left 50ms ease, top 50ms ease` for smooth movement
-> - Fade out after 4 seconds of no movement
-> - Implemented as absolutely positioned divs over the canvas
->
-> **IMPORTANT:**
-> - Cursor coordinates must account for zoom: `displayX = x * zoom + panX`
-> - Never render your own cursor (filter by userId)
-> - Throttle STRICTLY — 50ms minimum between broadcasts
->
-> ---
->
-> ## 4. SHARE MODAL
->
-> `Share` button in top bar (Lucide: `Share2`, gold border, gold text):
->
-> **Modal contents:**
-> - Board link: full URL in a text input (readonly)
-> - Copy button: copies to clipboard, shows `Copied! ✓` for 2 seconds
-> - QR code: install `npm install qrcode.react`, render `<QRCodeSVG value={boardUrl} size={160} />`
-> - Privacy info: "Anyone with this link can view and edit"
-> - If board has password: "This board requires a password to unlock"
->
-> **Modal style:**
-> - Solid background `#151524` (dark) / `#fff8f0` (light) — NO excessive blur
-> - Gold border `1px solid rgba(201,168,76,0.3)`
-> - Max width: 420px, centered
-> - Close button top right
->
-> ---
->
-> ## WHAT TO SKIP IN THIS PROMPT
->
-> ❌ Email invite system — too complex
-> ❌ Permissions matrix — skip
-> ❌ Collaborator cursors in TipTap textboard — skip
->
-> ---
->
-> ## FINAL RULES
-> - Test avatars with 3 browser tabs simultaneously
-> - Verify user leaves and avatar disappears within 3 seconds
-> - QR code must render correctly and scan on mobile
-> - Cursor presence: test at 200% zoom — cursors must appear at correct positions
-> - Run `npm run dev` — zero console errors
-
----
-
----
-
-# PROMPT 6 — Command Palette + Final Polish
-
-> Add the command palette and apply final UI/UX polish. This is the last prompt — stability and consistency over new features.
->
-> ---
->
-> ## 1. COMMAND PALETTE (`Ctrl+K`)
->
-> Global keyboard shortcut available on all pages:
->
-> **Trigger:**
-> - `Ctrl+K` (Windows/Linux) or `Cmd+K` (Mac)
-> - Click on search bar in sidebar
->
-> **Modal:**
-> - Full screen backdrop: `rgba(0,0,0,0.6)`, click outside to close
-> - Centered card: 560px wide, solid `#151524` (dark) / `#fff8f0` (light)
-> - Border: `1px solid rgba(201,168,76,0.25)`
-> - Border-radius: 12px
->
-> **Inside:**
-> - Search input at top (autofocused): `Search boards and whiteboards...`
-> - Results list below: filters boards+whiteboards by title as user types
-> - Each result: board type icon + title + last updated time
-> - Highlight active result with gold background tint
-> - Keyboard navigation: arrow keys move selection, Enter opens board, Escape closes
->
-> **Empty state:** "No boards found for '[query]'"
->
-> **Animation:**
-> - Backdrop: fade in 150ms
-> - Modal: scale from 0.96 + fade in 150ms
-> - Close: reverse, 100ms
->
-> ---
->
-> ## 2. TOAST NOTIFICATIONS
->
-> Install: `npm install react-hot-toast`
->
-> Replace ALL browser `alert()` calls with toasts. Position: bottom-right.
->
-> ```js
-> // Success
-> toast.success('Board created', { style: { background: '#151524', color: '#f5ecd7', border: '1px solid rgba(201,168,76,0.3)' } })
->
-> // Error
-> toast.error('Failed to save', { style: { background: '#151524', color: '#ED93B1' } })
-> ```
->
-> Show toasts for:
-> ```
-> ✓ Board created successfully
-> ✓ Link copied to clipboard
-> ✓ Saved
-> ✓ Moved to trash
-> ✓ Restored from trash
-> ✓ Starred / Unstarred
-> ✗ Failed to create board
-> ✗ Failed to save
-> ✗ Connection lost — reconnecting...
-> ✓ Reconnected
-> ```
->
-> ---
->
-> ## 3. LOADING STATES
->
-> Replace any blank loading screens with skeleton loaders:
->
-> **Dashboard board grid skeleton:**
-> - 6 skeleton cards, same size as BoardCard
-> - Shimmer animation: `background: linear-gradient(90deg, rgba(201,168,76,0.05) 25%, rgba(201,168,76,0.1) 50%, rgba(201,168,76,0.05) 75%)`
-> - `background-size: 200% 100%`, `animation: shimmer 1.5s infinite`
->
-> **Whiteboard loading:**
-> - Centered spinner (gold) + "Loading board..." text
->
-> **Textboard loading:**
-> - Skeleton: 1 wide line (title) + 5 paragraph lines of varying width
->
-> ---
->
-> ## 4. EMPTY STATES
->
-> ```
-> All Boards empty:
->   Icon: Layout (48px, rgba(201,168,76,0.4))
->   Title: "No boards yet"
->   Subtitle: "Create your first board to get started"
->   Button: "+ New Board" (gold)
->
-> Starred empty:
->   Icon: Star (48px, muted)
->   Title: "Nothing starred yet"
->   Subtitle: "Click the star on any board to find it here quickly"
->
-> Trash empty:
->   Icon: Trash2 (48px, muted)
->   Title: "Trash is empty"
->   Subtitle: "Deleted boards will appear here for recovery"
->
-> Whiteboard (new blank):
->   Center canvas: "Start your ideas ⚡"
->   Subtitle: "Use the toolbar to add shapes, text, images and more."
->   Fades out on first interaction
-> ```
->
-> ---
->
-> ## 5. CANVAS GRID BACKGROUND (Whiteboard)
->
-> Add background option button in whiteboard toolbar (Lucide: `Grid`):
-> - **None**: solid background (current)
-> - **Dots**: small dot grid (8px spacing)
-> - **Lines**: grid lines (32px spacing)
->
-> Grid color:
-> ```
-> Dark:  rgba(255,255,255,0.04)
-> Light: rgba(0,0,0,0.05)
-> ```
->
-> Render grid on a background canvas layer (not the main drawing canvas).
-> Store preference in localStorage per board.
->
-> ---
->
-> ## 6. TYPOGRAPHY CONSISTENCY
->
-> Apply these consistently across ALL pages:
-> ```
-> Page titles:      Playfair Display, 24px, 600 weight
-> Section titles:   Inter, 18px, 600 weight
-> Card titles:      Inter, 15px, 500 weight
-> Body text:        Inter, 14px, 400 weight, line-height 1.7
-> Captions/muted:   Inter, 12px, 400 weight
-> Code:             JetBrains Mono, 13px
-> ```
->
-> ---
->
-> ## 7. CURSOR STYLES
->
-> ```
-> Default:              cursor: default
-> Clickable:            cursor: pointer
-> Draggable (idle):     cursor: grab
-> Dragging:             cursor: grabbing
-> Resize NW/SE:         cursor: nw-resize
-> Resize NE/SW:         cursor: ne-resize
-> Text tool:            cursor: text
-> Pen tool:             cursor: crosshair
-> Pan tool:             cursor: grab
-> ```
->
-> ---
->
-> ## 8. FOCUS STATES (Accessibility)
->
-> ```css
-> :focus-visible {
->   outline: 2px solid #C9A84C;
->   outline-offset: 2px;
->   border-radius: 4px;
-> }
-> ```
->
-> Apply to all buttons, inputs, and links.
->
-> ---
->
-> ## 9. SCROLLBAR STYLING
->
-> ```css
-> ::-webkit-scrollbar { width: 5px; height: 5px; }
-> ::-webkit-scrollbar-track { background: transparent; }
-> ::-webkit-scrollbar-thumb {
->   background: rgba(201,168,76,0.25);
->   border-radius: 3px;
-> }
-> ::-webkit-scrollbar-thumb:hover {
->   background: rgba(201,168,76,0.45);
-> }
-> ```
->
-> ---
->
-> ## 10. MOBILE BOTTOM NAV
->
-> On mobile (<768px), add bottom navigation (56px height):
-> ```
-> 🏠 Home | 📋 Boards | 🎨 Draw | ⭐ Starred | ☰ More
-> ```
-> - Active tab: gold icon + label text
-> - Inactive: muted icon, no label
-> - Fixed at bottom with safe area inset for iPhone
-> - Background: `#0d0d1a` (dark) / `#fdf6ee` (light)
-> - Border-top: `1px solid rgba(201,168,76,0.15)`
->
-> ---
->
-> ## 11. KEYBOARD SHORTCUTS REFERENCE
->
-> Add a `?` button to whiteboard toolbar that shows a shortcuts modal:
-> ```
-> V       Select tool
-> H       Pan tool
-> P       Pen tool
-> E       Eraser
-> T       Text
-> S       Shapes
-> N       Sticky note
-> Ctrl+Z  Undo
-> Ctrl+Y  Redo
-> Ctrl+K  Command palette
-> Ctrl+=  Zoom in
-> Ctrl+-  Zoom out
-> Ctrl+0  Reset zoom
-> Escape  Cancel / deselect
-> ```
->
-> ---
->
-> ## WHAT TO SKIP IN THIS PROMPT
->
-> ❌ Route transitions — adds complexity for little gain
-> ❌ React.lazy virtualization — premature optimization
-> ❌ Export as Markdown — nice to have, not essential
->
-> ---
->
-> ## FINAL CHECKS (run all of these)
-> - `npm run build` — zero errors, zero warnings
-> - Test dark and light theme on every single page
-> - Test at 375px mobile viewport — nothing overflows
-> - Test Ctrl+K command palette — keyboard navigation works
-> - Test all whiteboard tools still work after polish changes
-> - Test two-tab real-time sync still works
-> - Test admin login still works
-> - Push to GitHub and verify Vercel deployment succeeds
-
----
-
----
-
-# PACKAGES SUMMARY
+### Audit Checklist
 
 ```bash
-# Prompt 4 (TipTap)
-npm install @tiptap/react @tiptap/pm @tiptap/starter-kit
-npm install @tiptap/extension-placeholder @tiptap/extension-typography
-npm install @tiptap/extension-color @tiptap/extension-text-style
-npm install @tiptap/extension-highlight
-npm install @tiptap/extension-task-list @tiptap/extension-task-item
-npm install @tiptap/extension-image @tiptap/extension-link
+# Run these in your project root before starting:
 
-# Prompt 5 (QR Code)
+# 1. Check for secrets in frontend
+grep -r "MONGO_URI\|JWT_SECRET\|PASSWORD\|SECRET" client/src/
+
+# 2. Check for server files accidentally in client
+find client/src -name "*.js" | xargs grep -l "mongoose\|express\|require('dotenv')"
+
+# 3. Check .gitignore covers .env
+cat .gitignore | grep ".env"
+
+# 4. Check no .env in client/
+ls -la client/.env 2>/dev/null && echo "WARNING: .env found in client"
+
+# 5. List any non-component files in client/src that look like backend code
+find client/src -name "*.js" -not -path "*/node_modules/*" | head -40
+```
+
+### Expected Clean State
+```
+client/src/
+  components/       ← React components only
+  pages/            ← Page components only
+  hooks/            ← Custom hooks only
+  context/          ← React contexts only
+  utils/            ← Pure utility functions (no secrets)
+  assets/           ← Static assets only
+  socket.js         ← Socket.io client init (no secrets, just URL)
+  api.js            ← Axios instance (base URL from env var, not hardcoded)
+```
+
+### If You Find Issues
+- Move any backend files to `server/` immediately
+- Move secrets to `.env` and add `.env` to `.gitignore`
+- Replace hardcoded URLs with `import.meta.env.VITE_API_URL`
+
+---
+
+## PHASE 1 — TEXT BOX USER ATTRIBUTION SYSTEM
+
+### Overview
+Every text object on the whiteboard must show a persistent attribution label (who created it), a live typing indicator, and user color assignment from the server.
+
+### 1.1 — Server: Color + User Number Assignment
+
+**File: `server/socket/whiteboardHandlers.js`** (or wherever your socket room logic lives)
+
+Add room-level user tracking on `join_board`:
+
+```js
+// In-memory room registry (resets on server restart — acceptable)
+const roomUsers = {}  // { boardId: { socketId: { userId, userName, color, userNumber } } }
+
+const USER_COLORS = [
+  '#C9A84C',  // gold
+  '#ED93B1',  // blush pink
+  '#AFA9EC',  // lavender
+  '#6EC9A8',  // mint
+  '#E8956D',  // coral
+  '#64B5F6',  // sky blue
+]
+
+socket.on('join_board', ({ boardId, userId, userName }) => {
+  if (!roomUsers[boardId]) roomUsers[boardId] = {}
+
+  // Assign color by position in room
+  const existingCount = Object.keys(roomUsers[boardId]).length
+  const color = USER_COLORS[existingCount % USER_COLORS.length]
+  const userNumber = existingCount + 1
+
+  roomUsers[boardId][socket.id] = { userId, userName, color, userNumber }
+
+  socket.join(boardId)
+
+  // Send this user their assigned color/number
+  socket.emit('joined_board', { userId, userName, color, userNumber })
+
+  // Broadcast updated user list to room
+  const users = Object.values(roomUsers[boardId])
+  io.to(boardId).emit('user_list', { users })
+})
+
+socket.on('disconnect', () => {
+  // Remove from all rooms
+  for (const [boardId, users] of Object.entries(roomUsers)) {
+    if (users[socket.id]) {
+      delete users[socket.id]
+      const remaining = Object.values(users)
+      io.to(boardId).emit('user_list', { users: remaining })
+      io.to(boardId).emit('user_left', { socketId: socket.id })
+    }
+  }
+})
+```
+
+**New socket events added:**
+- `join_board` (client → server): `{ boardId, userId, userName }`
+- `joined_board` (server → client): `{ userId, userName, color, userNumber }`
+- `user_list` (server → all in room): `{ users: [{userId, userName, color, userNumber}] }`
+- `user_left` (server → all in room): `{ socketId }`
+
+---
+
+### 1.2 — Client: useUserColor Hook
+
+**New file: `client/src/hooks/useUserColor.js`**
+
+```js
+import { useState, useEffect } from 'react'
+import { socket } from '../socket'
+
+export function useUserColor(boardId) {
+  const [myColor, setMyColor] = useState('#C9A84C')
+  const [myNumber, setMyNumber] = useState(1)
+  const [activeUsers, setActiveUsers] = useState([])
+
+  useEffect(() => {
+    const userId = localStorage.getItem('bb_user_id') || generateId()
+    const userName = localStorage.getItem('bb_user_name') || 'Anonymous'
+
+    socket.emit('join_board', { boardId, userId, userName })
+
+    socket.on('joined_board', ({ color, userNumber }) => {
+      setMyColor(color)
+      setMyNumber(userNumber)
+      localStorage.setItem('bb_user_color', color)
+    })
+
+    socket.on('user_list', ({ users }) => {
+      setActiveUsers(users)
+    })
+
+    return () => {
+      socket.off('joined_board')
+      socket.off('user_list')
+    }
+  }, [boardId])
+
+  return { myColor, myNumber, activeUsers }
+}
+```
+
+---
+
+### 1.3 — Attribution Label Component
+
+**New file: `client/src/components/whiteboard/AttributionLabel.jsx`**
+
+```jsx
+// Props: userName, color, isTyping
+export function AttributionLabel({ userName, color, isTyping }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      top: -24,
+      left: 0,
+      background: color,
+      color: '#0d0d1a',
+      fontSize: 10,
+      fontWeight: 700,
+      fontFamily: 'Inter, sans-serif',
+      padding: '2px 6px',
+      borderRadius: 4,
+      whiteSpace: 'nowrap',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      boxShadow: isTyping ? `0 0 6px ${color}99` : 'none',
+      transition: 'box-shadow 200ms ease',
+      zIndex: 10,
+    }}>
+      {userName}{isTyping ? ' ✍️' : ''}
+    </div>
+  )
+}
+```
+
+---
+
+### 1.4 — Text Object: Add authorId + authorName + authorColor Fields
+
+**When creating any text object**, attach attribution:
+
+```js
+// In whatever function creates text objects:
+const newTextObject = {
+  id: nanoid(),
+  type: 'text',
+  x: canvasX,
+  y: canvasY,
+  width: 200,
+  height: 40,
+  content: '',
+  fontSize: 16,
+  color: '#f5ecd7',
+  // --- NEW FIELDS ---
+  authorId: localStorage.getItem('bb_user_id'),
+  authorName: localStorage.getItem('bb_user_name') || `User ${myNumber}`,
+  authorColor: myColor,
+}
+```
+
+**When receiving remote text objects**, the `authorName` and `authorColor` come in with the object — no extra lookup needed.
+
+---
+
+### 1.5 — TextObject Component: Render Label
+
+**File: `client/src/components/whiteboard/TextObject.jsx`** (modify existing)
+
+Inside the positioned wrapper div, add the label:
+
+```jsx
+<div style={{ position: 'relative' }}>
+  {/* Attribution label */}
+  <AttributionLabel
+    userName={obj.authorName || 'Anonymous'}
+    color={obj.authorColor || '#C9A84C'}
+    isTyping={typingUsers[obj.id] !== undefined}
+  />
+  {/* Existing text content */}
+  <div
+    contentEditable={isSelected}
+    suppressContentEditableWarning
+    // ... existing props
+  />
+</div>
+```
+
+---
+
+### 1.6 — Live Typing Indicator
+
+**Socket events to add:**
+- `user_typing` (client → server): `{ userId, textBoxId, isTyping }`
+- `user_typing_update` (server → room): `{ userId, textBoxId, isTyping, userName, color }`
+
+**Server handler** (add to whiteboardHandlers.js):
+```js
+socket.on('user_typing', ({ userId, textBoxId, isTyping }) => {
+  const boardId = getUserBoardId(socket.id) // look up from roomUsers
+  socket.to(boardId).emit('user_typing_update', {
+    userId, textBoxId, isTyping,
+    userName: roomUsers[boardId]?.[socket.id]?.userName,
+    color: roomUsers[boardId]?.[socket.id]?.color,
+  })
+})
+```
+
+**Client: track typing state in whiteboard:**
+```js
+const [typingUsers, setTypingUsers] = useState({})
+// typingUsers shape: { [textBoxId]: { userId, userName, color } }
+
+// In useEffect with socket:
+socket.on('user_typing_update', ({ userId, textBoxId, isTyping, userName, color }) => {
+  setTypingUsers(prev => {
+    if (!isTyping) {
+      const next = { ...prev }
+      delete next[textBoxId]
+      return next
+    }
+    return { ...prev, [textBoxId]: { userId, userName, color } }
+  })
+})
+```
+
+**In TextObject — emit typing events:**
+```js
+// Throttle ref
+const typingTimerRef = useRef(null)
+
+const handleInput = (e) => {
+  // Existing content update logic...
+
+  // Emit typing start
+  socket.emit('user_typing', { userId: myUserId, textBoxId: obj.id, isTyping: true })
+
+  // Auto-stop after 2s inactivity
+  clearTimeout(typingTimerRef.current)
+  typingTimerRef.current = setTimeout(() => {
+    socket.emit('user_typing', { userId: myUserId, textBoxId: obj.id, isTyping: false })
+  }, 2000)
+}
+
+const handleBlur = () => {
+  socket.emit('user_typing', { userId: myUserId, textBoxId: obj.id, isTyping: false })
+  clearTimeout(typingTimerRef.current)
+  // Existing save logic...
+}
+```
+
+---
+
+### 1.7 — Real-Time Content Sync (1s debounce + immediate on blur/Enter)
+
+This should use existing `wb_draw_stroke` / `receive_stroke` for full object commits. Add a separate `text_content_update` event for live content syncing while typing:
+
+**New lightweight event:**
+```js
+// Client → Server (debounced 1s):
+socket.emit('text_content_update', { objectId: obj.id, content, boardId })
+
+// Server → others in room:
+socket.on('text_content_update', ({ objectId, content }) => {
+  socket.to(boardId).emit('receive_text_content', { objectId, content })
+})
+
+// Client — apply update only if not the focused element:
+socket.on('receive_text_content', ({ objectId, content }) => {
+  if (focusedObjectId !== objectId) {
+    updateObjectContent(objectId, content)
+  }
+})
+```
+
+---
+
+## PHASE 2 — COLLABORATOR AVATARS (from Prompt 5)
+
+This is partially implemented per the spec. Verify and complete:
+
+### 2.1 — Avatar Bar Component
+
+**File: `client/src/components/shared/AvatarBar.jsx`**
+
+```jsx
+export function AvatarBar({ users }) {
+  const visible = users.slice(0, 4)
+  const overflow = users.length - 4
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Online indicator */}
+      <span style={{ color: '#1D9E75', fontSize: 12, marginRight: 8 }}>
+        ● {users.length} online
+      </span>
+
+      {/* Stacked avatars */}
+      <div style={{ display: 'flex' }}>
+        {visible.map((user, i) => (
+          <div
+            key={user.userId}
+            title={user.userName}
+            style={{
+              width: 32, height: 32,
+              borderRadius: '50%',
+              background: user.color,
+              color: '#0d0d1a',
+              fontSize: 13, fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              marginLeft: i === 0 ? 0 : -8,
+              border: '2px solid #0d0d1a',
+              cursor: 'default',
+              zIndex: visible.length - i,
+              position: 'relative',
+              transition: 'opacity 300ms ease',
+            }}
+          >
+            {(user.userName || 'A')[0].toUpperCase()}
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: 'rgba(201,168,76,0.15)',
+            color: '#C9A84C', fontSize: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginLeft: -8, border: '2px solid #0d0d1a',
+          }}>
+            +{overflow}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+```
+
+### 2.2 — Verify AvatarBar is in Whiteboard + Board top bars
+
+Check that `<AvatarBar users={activeUsers} />` is rendered in the top bar of:
+- `WhiteboardPage.jsx`
+- `Whiteboard.jsx` (embedded/locked version)
+- Board/Textboard page top bar
+
+---
+
+## PHASE 3 — CURSOR PRESENCE (Whiteboard only)
+
+Only implement after avatars are confirmed stable.
+
+### 3.1 — Cursor Broadcast
+
+```js
+// In whiteboard mouse move handler — throttled to 50ms:
+const lastCursorEmit = useRef(0)
+
+const handleMouseMove = (e) => {
+  // ... existing logic ...
+
+  const now = Date.now()
+  if (now - lastCursorEmit.current > 50) {
+    const rect = canvasRef.current.getBoundingClientRect()
+    const canvasX = (e.clientX - rect.left - panX) / zoom
+    const canvasY = (e.clientY - rect.top - panY) / zoom
+
+    socket.emit('cursor_move', {
+      userId: myUserId,
+      userName: myUserName,
+      color: myColor,
+      x: canvasX,
+      y: canvasY,
+      boardId,
+    })
+    lastCursorEmit.current = now
+  }
+}
+```
+
+### 3.2 — Server Relay
+
+```js
+socket.on('cursor_move', ({ userId, userName, color, x, y }) => {
+  const boardId = getUserBoardId(socket.id)
+  socket.to(boardId).emit('receive_cursor', { userId, userName, color, x, y })
+})
+```
+
+### 3.3 — Remote Cursor Component
+
+**File: `client/src/components/whiteboard/RemoteCursor.jsx`**
+
+```jsx
+export function RemoteCursor({ user, zoom, panX, panY }) {
+  const displayX = user.x * zoom + panX
+  const displayY = user.y * zoom + panY
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: displayX,
+      top: displayY,
+      pointerEvents: 'none',
+      transition: 'left 50ms ease, top 50ms ease',
+      zIndex: 1000,
+    }}>
+      {/* Arrow cursor SVG in user color */}
+      <svg width="20" height="20" viewBox="0 0 20 20">
+        <path d="M2 2 L2 16 L6 12 L10 18 L12 17 L8 11 L14 11 Z"
+          fill={user.color} stroke="#0d0d1a" strokeWidth="1" />
+      </svg>
+      {/* Name label */}
+      <div style={{
+        background: user.color,
+        color: '#0d0d1a',
+        fontSize: 11, fontWeight: 600,
+        padding: '2px 6px',
+        borderRadius: 4,
+        marginTop: 2,
+        whiteSpace: 'nowrap',
+        fontFamily: 'Inter, sans-serif',
+      }}>
+        {user.userName}
+      </div>
+    </div>
+  )
+}
+```
+
+### 3.4 — Cursor State + Fade-Out
+
+```js
+const [remoteCursors, setRemoteCursors] = useState({})
+// { [userId]: { ...cursorData, lastSeen: timestamp } }
+
+socket.on('receive_cursor', (cursorData) => {
+  if (cursorData.userId === myUserId) return  // never render own cursor
+
+  setRemoteCursors(prev => ({
+    ...prev,
+    [cursorData.userId]: { ...cursorData, lastSeen: Date.now() }
+  }))
+})
+
+// Cleanup stale cursors every second
+useEffect(() => {
+  const interval = setInterval(() => {
+    const now = Date.now()
+    setRemoteCursors(prev => {
+      const next = { ...prev }
+      for (const [id, cursor] of Object.entries(next)) {
+        if (now - cursor.lastSeen > 4000) delete next[id]
+      }
+      return next
+    })
+  }, 1000)
+  return () => clearInterval(interval)
+}, [])
+```
+
+---
+
+## PHASE 4 — SHARE MODAL
+
+**File: `client/src/components/shared/ShareModal.jsx`**
+
+```jsx
+import { QRCodeSVG } from 'qrcode.react'
+import { useState } from 'react'
+
+export function ShareModal({ boardUrl, isPasswordProtected, onClose }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(boardUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    // Backdrop
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }}>
+      {/* Modal — stop propagation */}
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#151524',
+        border: '1px solid rgba(201,168,76,0.3)',
+        borderRadius: 12,
+        padding: 32,
+        width: 420,
+        maxWidth: '90vw',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <h2 style={{ margin: 0, color: '#f5ecd7', fontSize: 18 }}>Share Board</h2>
+          <button onClick={onClose}>✕</button>
+        </div>
+
+        {/* URL input + copy */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+          <input
+            readOnly value={boardUrl}
+            style={{ flex: 1, background: '#0d0d1a', border: '1px solid rgba(201,168,76,0.2)',
+              borderRadius: 8, padding: '8px 12px', color: '#f5ecd7', fontSize: 13 }}
+          />
+          <button onClick={handleCopy} style={{
+            background: copied ? '#1D9E75' : 'transparent',
+            border: '1px solid rgba(201,168,76,0.4)',
+            color: '#C9A84C', borderRadius: 8, padding: '8px 16px', cursor: 'pointer',
+          }}>
+            {copied ? 'Copied! ✓' : 'Copy'}
+          </button>
+        </div>
+
+        {/* QR Code */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+          <QRCodeSVG value={boardUrl} size={160}
+            bgColor="transparent" fgColor="#C9A84C" />
+        </div>
+
+        {/* Info */}
+        <p style={{ fontSize: 12, color: 'rgba(245,236,215,0.5)', textAlign: 'center', margin: 0 }}>
+          {isPasswordProtected
+            ? 'This board requires a password to unlock'
+            : 'Anyone with this link can view and edit'}
+        </p>
+      </div>
+    </div>
+  )
+}
+```
+
+**Install QR package if not already installed:**
+```bash
 npm install qrcode.react
+```
 
-# Prompt 6 (Toasts)
+---
+
+## PHASE 5 — COMMAND PALETTE
+
+**File: `client/src/components/shared/CommandPalette.jsx`**
+
+```jsx
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+export function CommandPalette({ boards, whiteboards, onClose }) {
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const inputRef = useRef()
+  const navigate = useNavigate()
+
+  // Combine + filter
+  const allItems = [
+    ...boards.map(b => ({ ...b, type: 'board', icon: '📝' })),
+    ...whiteboards.map(w => ({ ...w, type: 'whiteboard', icon: '🎨' })),
+  ]
+  const results = query
+    ? allItems.filter(i => i.title?.toLowerCase().includes(query.toLowerCase()))
+    : allItems.slice(0, 8)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => { setActiveIndex(0) }, [query])
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') setActiveIndex(i => Math.min(i + 1, results.length - 1))
+    if (e.key === 'ArrowUp') setActiveIndex(i => Math.max(i - 1, 0))
+    if (e.key === 'Enter' && results[activeIndex]) {
+      navigate(`/${results[activeIndex].type}s/${results[activeIndex].id}`)
+      onClose()
+    }
+    if (e.key === 'Escape') onClose()
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.6)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      paddingTop: '20vh', zIndex: 2000,
+      animation: 'fadeIn 150ms ease',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: 560, maxWidth: '90vw',
+        background: '#151524',
+        border: '1px solid rgba(201,168,76,0.25)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        animation: 'scaleIn 150ms ease',
+      }}>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search boards and whiteboards..."
+          style={{
+            width: '100%', padding: '16px 20px',
+            background: 'transparent',
+            border: 'none', borderBottom: '1px solid rgba(201,168,76,0.1)',
+            color: '#f5ecd7', fontSize: 16, outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+        <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          {results.length === 0 ? (
+            <div style={{ padding: '20px', color: 'rgba(245,236,215,0.4)', textAlign: 'center' }}>
+              No boards found for "{query}"
+            </div>
+          ) : results.map((item, i) => (
+            <div
+              key={item.id}
+              onClick={() => { navigate(`/${item.type}s/${item.id}`); onClose() }}
+              style={{
+                padding: '12px 20px',
+                display: 'flex', alignItems: 'center', gap: 12,
+                background: i === activeIndex ? 'rgba(201,168,76,0.08)' : 'transparent',
+                cursor: 'pointer',
+                borderLeft: i === activeIndex ? '3px solid #C9A84C' : '3px solid transparent',
+              }}
+            >
+              <span>{item.icon}</span>
+              <div>
+                <div style={{ color: '#f5ecd7', fontSize: 14, fontWeight: 500 }}>{item.title}</div>
+                <div style={{ color: 'rgba(245,236,215,0.4)', fontSize: 11 }}>
+                  {item.type} · {formatRelativeTime(item.updatedAt)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+```
+
+**Wire Ctrl+K globally** in `App.jsx` or a root layout:
+
+```js
+useEffect(() => {
+  const handler = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault()
+      setCommandPaletteOpen(true)
+    }
+  }
+  window.addEventListener('keydown', handler)
+  return () => window.removeEventListener('keydown', handler)
+}, [])
+```
+
+---
+
+## PHASE 6 — TOAST NOTIFICATIONS
+
+**Install:**
+```bash
 npm install react-hot-toast
 ```
 
+**Setup in `App.jsx` or root:**
+```jsx
+import { Toaster } from 'react-hot-toast'
+
+// In JSX:
+<Toaster
+  position="bottom-right"
+  toastOptions={{
+    style: {
+      background: '#151524',
+      color: '#f5ecd7',
+      border: '1px solid rgba(201,168,76,0.3)',
+      fontFamily: 'Inter, sans-serif',
+      fontSize: 13,
+    },
+    success: { iconTheme: { primary: '#C9A84C', secondary: '#151524' } },
+    error: { style: { border: '1px solid rgba(237,147,177,0.4)' } },
+  }}
+/>
+```
+
+**Replace all `alert()` calls with:**
+```js
+import toast from 'react-hot-toast'
+
+toast.success('Board created successfully')
+toast.error('Failed to save')
+toast('Moved to trash', { icon: '🗑️' })
+toast.success('Restored from trash')
+toast.success('Starred')
+toast('Reconnected', { icon: '🟢' })
+```
+
+**Grep for remaining `alert(` calls:**
+```bash
+grep -r "alert(" client/src/
+```
+
 ---
 
-# FEATURES INTENTIONALLY EXCLUDED
+## PHASE 7 — CANVAS GRID BACKGROUND
 
-These were in the original plan but removed based on architectural feedback:
+**File: `client/src/components/whiteboard/CanvasGrid.jsx`**
 
-| Feature | Reason Excluded |
+```jsx
+// Renders as a background canvas layer behind the drawing canvas
+export function CanvasGrid({ mode, width, height, zoom, panX, panY, isDark }) {
+
+  if (mode === 'none') return null
+
+  const dotColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'
+
+  if (mode === 'dots') {
+    const spacing = 24
+    // Generate SVG dot pattern
+    return (
+      <svg
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+        width={width} height={height}
+      >
+        <defs>
+          <pattern id="dots" x={panX % spacing} y={panY % spacing}
+            width={spacing * zoom} height={spacing * zoom}
+            patternUnits="userSpaceOnUse">
+            <circle cx={spacing * zoom / 2} cy={spacing * zoom / 2}
+              r={1} fill={dotColor} />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dots)" />
+      </svg>
+    )
+  }
+
+  if (mode === 'lines') {
+    const spacing = 32 * zoom
+    return (
+      <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+        width={width} height={height}>
+        <defs>
+          <pattern id="lines" x={panX % spacing} y={panY % spacing}
+            width={spacing} height={spacing} patternUnits="userSpaceOnUse">
+            <path d={`M ${spacing} 0 L 0 0 0 ${spacing}`}
+              fill="none" stroke={dotColor} strokeWidth="1" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#lines)" />
+      </svg>
+    )
+  }
+}
+```
+
+**Store preference:**
+```js
+const [gridMode, setGridMode] = useState(
+  () => localStorage.getItem(`bb_grid_${boardId}`) || 'none'
+)
+const cycleGrid = () => {
+  const modes = ['none', 'dots', 'lines']
+  const next = modes[(modes.indexOf(gridMode) + 1) % modes.length]
+  setGridMode(next)
+  localStorage.setItem(`bb_grid_${boardId}`, next)
+}
+```
+
+---
+
+## PHASE 8 — SKELETON LOADERS
+
+**File: `client/src/components/shared/SkeletonCard.jsx`**
+
+```jsx
+export function SkeletonCard() {
+  return (
+    <div style={{
+      background: '#151524',
+      border: '1px solid rgba(201,168,76,0.1)',
+      borderRadius: 10,
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        height: 120,
+        background: 'linear-gradient(90deg, rgba(201,168,76,0.05) 25%, rgba(201,168,76,0.1) 50%, rgba(201,168,76,0.05) 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.5s infinite',
+      }} />
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ height: 14, width: '60%', borderRadius: 4, marginBottom: 8,
+          background: 'rgba(201,168,76,0.08)',
+          backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+        <div style={{ height: 10, width: '40%', borderRadius: 4,
+          background: 'rgba(201,168,76,0.05)',
+          backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite' }} />
+      </div>
+    </div>
+  )
+}
+```
+
+**Global CSS (add to index.css):**
+```css
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+```
+
+---
+
+## PHASE 9 — MOBILE BOTTOM NAV
+
+**File: `client/src/components/shared/MobileNav.jsx`**
+
+```jsx
+import { Home, Layout, PenTool, Star, Menu } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+
+const NAV_ITEMS = [
+  { icon: Home, label: 'Home', path: '/dashboard' },
+  { icon: Layout, label: 'Boards', path: '/boards' },
+  { icon: PenTool, label: 'Draw', path: '/new-whiteboard' },
+  { icon: Star, label: 'Starred', path: '/starred' },
+  { icon: Menu, label: 'More', path: '/menu' },
+]
+
+export function MobileNav() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  return (
+    <nav style={{
+      display: 'none', // shown via CSS media query
+      position: 'fixed', bottom: 0, left: 0, right: 0,
+      height: 56, zIndex: 100,
+      background: '#0d0d1a',
+      borderTop: '1px solid rgba(201,168,76,0.15)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }}
+    className="mobile-nav">
+      {NAV_ITEMS.map(({ icon: Icon, label, path }) => {
+        const isActive = location.pathname.startsWith(path)
+        return (
+          <button key={path} onClick={() => navigate(path)} style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'transparent', border: 'none', cursor: 'pointer',
+            color: isActive ? '#C9A84C' : 'rgba(245,236,215,0.3)',
+            gap: 2,
+          }}>
+            <Icon size={20} />
+            {isActive && <span style={{ fontSize: 10 }}>{label}</span>}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+```
+
+**CSS:**
+```css
+@media (max-width: 768px) {
+  .mobile-nav { display: flex !important; }
+  body { padding-bottom: 56px; }
+}
+```
+
+---
+
+## SAFETY AUDIT REPORT
+
+### ✅ Architecture Checks
+
+| Check | Status | Action |
+|---|---|---|
+| Frontend has no `.env` secrets | **Verify** | Run grep audit in Phase 0 |
+| API base URL from env var, not hardcoded | **Verify** | Check `api.js` / `socket.js` |
+| No Mongoose models in `client/src/` | **Verify** | Find + move if found |
+| No backend route files in `client/src/` | **Verify** | Find + move if found |
+| `.gitignore` covers `.env` | **Verify** | Check `.gitignore` |
+| No `console.log` leaking socket data | **Verify** | Grep for sensitive logs |
+
+### ✅ Socket Event Safety
+
+| Event | Risk | Mitigation |
+|---|---|---|
+| `user_typing` | Spam if not throttled | Throttle to 500ms on client |
+| `cursor_move` | Spam if not throttled | Throttle to 50ms on client |
+| `join_board` | Anyone can join any room | Acceptable — no auth per spec |
+| `wb_draw_stroke` | Malformed payloads | Validate `type` field server-side |
+| `text_content_update` | Content flooding | Debounce 1s client-side |
+
+### ✅ Data Safety
+
+| Risk | Mitigation |
 |---|---|
-| Connector/Arrow tool | Too complex, jittery, recursive update risk |
-| Rubber-band multi-select | Interaction conflicts with zoom/pan |
-| Minimap dragging | High complexity, low value |
-| TipTap collaboration (Yjs) | Way too complex for current scope |
-| Collaborator cursors in TipTap | Skip — whiteboard cursors sufficient |
-| Email invite system | Requires auth rewrite |
-| Route transitions | Adds complexity for minimal gain |
-| Random sticky note rotation | Causes coordinate sync bugs |
+| `authorColor` from client could be spoofed | Acceptable — cosmetic only, no security impact |
+| `userName` from localStorage unverified | Acceptable per spec — no auth system |
+| Room user list lives in memory | Server restart clears presence — acceptable |
+| QR code exposes board URL | URL is already shareable — no new risk |
+
+### ✅ Performance Checks
+
+| Check | Expected |
+|---|---|
+| Cursor events: max rate | 20/s (every 50ms) |
+| Typing events: max rate | 2/s (every 500ms) |
+| Text sync: max rate | 1/s debounced |
+| Avatar re-renders | Only on `user_list` change (not every cursor move) |
+| Grid SVG redraws | Only on zoom/pan/mode change |
+
+### ✅ Known Risks to Monitor
+
+1. **Memory leak — typing timers**: Ensure `clearTimeout` on all typing timer refs when component unmounts
+2. **Cursor cleanup**: Stale cursor cleanup interval must be cleared on unmount
+3. **Socket listener duplication**: All `socket.on()` calls must have corresponding `socket.off()` in cleanup functions (missing these causes duplicate event handlers on re-render)
+4. **roomUsers memory growth**: Server-side roomUsers object grows indefinitely if boards are visited but not left cleanly. Consider a periodic cleanup of empty rooms.
 
 ---
 
+## BUILD ORDER (Follow Strictly)
 
-Then:
-1. Vercel auto-redeploys frontend
-2. Render auto-redeploys backend
-3. Check Render env variables still have all required vars
-4. Wake up Render: visit `https://blackboxblackboard.onrender.com`
-5. Test full flow on live URL
-6. Test on mobile device (not just browser resize)
+```
+Phase 0  → Frontend file audit (30 min)
+Phase 1  → User attribution system — server color assignment + labels (2-3 hrs)
+Phase 2  → Collaborator avatars (verify/complete — 1 hr)
+Phase 3  → Cursor presence (only after Phase 2 stable — 1-2 hrs)
+Phase 4  → Share modal + QR code (1 hr)
+Phase 5  → Command palette (1-2 hrs)
+Phase 6  → Toast notifications — replace all alert() (30 min)
+Phase 7  → Canvas grid background (30 min)
+Phase 8  → Skeleton loaders (30 min)
+Phase 9  → Mobile bottom nav (30 min)
+```
+
+**Total estimated: 8-12 hours of focused implementation**
+
+---
+
+## FILES TO CREATE (New)
+
+```
+client/src/hooks/useUserColor.js
+client/src/components/whiteboard/AttributionLabel.jsx
+client/src/components/whiteboard/RemoteCursor.jsx
+client/src/components/whiteboard/CanvasGrid.jsx
+client/src/components/shared/AvatarBar.jsx
+client/src/components/shared/ShareModal.jsx
+client/src/components/shared/CommandPalette.jsx
+client/src/components/shared/SkeletonCard.jsx
+client/src/components/shared/MobileNav.jsx
+```
+
+## FILES TO MODIFY (Existing)
+
+```
+server/socket/whiteboardHandlers.js   ← add user color assignment, typing relay, cursor relay
+client/src/components/whiteboard/TextObject.jsx   ← add attribution label + typing emit
+client/src/pages/WhiteboardPage.jsx   ← add avatars, cursors, grid, share modal
+client/src/pages/Whiteboard.jsx       ← same as above (keep parity)
+client/src/App.jsx                    ← add Toaster, Ctrl+K handler, CommandPalette
+client/src/index.css                  ← shimmer keyframe, scrollbar styles, focus-visible
+```
+
+---
+
+## POST-BUILD VERIFICATION CHECKLIST
+
+```
+□ Open 3 browser tabs on same whiteboard
+□ Each tab shows different color avatar
+□ Each tab's text objects show correct attribution label
+□ Typing in tab 1 shows ✍️ indicator in tabs 2 and 3
+□ Content syncs within 1 second between tabs
+□ Cursor appears in other tabs, fades after 4s of stillness
+□ Share modal opens, QR code renders, copy works
+□ Ctrl+K opens command palette, arrow keys navigate, Enter opens board
+□ No alert() calls remain — all replaced with toasts
+□ Grid toggles: None → Dots → Lines
+□ Mobile: bottom nav visible at 375px, no overflow
+□ npm run build — zero errors
+□ grep -r "MONGO_URI\|JWT_SECRET" client/src/ → zero results
+```

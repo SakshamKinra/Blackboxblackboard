@@ -30,11 +30,35 @@ const deleteImages = (imagesArray) => {
   });
 };
 
-// Evaluates expiry from activation timestamp + ttl hours.
+// Inactivity window in milliseconds (7 days)
+const INACTIVITY_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Determines whether a board should be considered expired.
+// Rules:
+// 1) If unlockAt exists and current time is before unlockAt => cannot expire yet.
+// 2) If expiryMode === 'none' => never expire automatically.
+// 3) If expiryMode === 'fixed' and activatedAt exists => use old activatedAt + expiresAfter hours logic.
+// 4) Otherwise (inactivity) consider lastAccessedAt (fallback to activatedAt or createdAt)
 const hasBoardExpired = (board) => {
-  if (!board || !board.activatedAt) return false;
-  const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
-  return Date.now() > expiryTime;
+  if (!board) return false;
+  const now = Date.now();
+
+  // If unlock is scheduled in the future, the board must not expire before unlock.
+  if (board.unlockAt && now < new Date(board.unlockAt).getTime()) return false;
+
+  if (board.expiryMode === 'none') return false;
+
+  // Support legacy fixed expiry semantics if explicitly selected.
+  if (board.expiryMode === 'fixed' && board.activatedAt) {
+    const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
+    return now > expiryTime;
+  }
+
+  // Default: inactivity-based expiry. Use lastAccessedAt if available,
+  // otherwise fall back to activatedAt (if set) or createdAt.
+  const last = board.lastAccessedAt ? new Date(board.lastAccessedAt).getTime()
+    : (board.activatedAt ? new Date(board.activatedAt).getTime() : new Date(board.createdAt).getTime());
+  return (now - last) > INACTIVITY_MS;
 };
 
 // Number of bcrypt salt rounds — 10 is the standard balance
@@ -47,7 +71,7 @@ const SALT_ROUNDS = 10;
 // ------------------------------------------------------------
 const createBoard = async (req, res, next) => {
   try {
-    const { content, unlockType, unlockAt, password, boardName, expiresAfter } = req.body;
+    const { content, unlockType, unlockAt, password, boardName, expiresAfter, expiryMode } = req.body;
 
     // Validate that unlockType is provided and is a valid enum value.
     const validTypes = ['date', 'password', 'both'];
@@ -85,14 +109,18 @@ const createBoard = async (req, res, next) => {
     // using nanoid (21 chars by default, ~2 billion IDs before collision risk).
     const boardId = nanoid(10);
 
-    // Validate expiresAfter if provided (1–48 hours)
-    let validExpiresAfter = 3; // default
-    if (expiresAfter !== undefined && expiresAfter !== null && expiresAfter !== '') {
+    // Determine expiry behavior. expiryMode is optional and defaults to 'inactivity'.
+    const validExpiryModes = ['inactivity', 'fixed', 'none'];
+    const chosenExpiryMode = expiryMode && validExpiryModes.includes(expiryMode) ? expiryMode : 'inactivity';
+
+    // Validate expiresAfter only when using 'fixed' expiry mode.
+    let validExpiresAfter = 3; // default hours for legacy/fixed mode
+    if (chosenExpiryMode === 'fixed' && expiresAfter !== undefined && expiresAfter !== null && expiresAfter !== '') {
       const parsed = Number(expiresAfter);
       if (isNaN(parsed) || parsed < 1 || parsed > 48) {
         return res.status(400).json({
           success: false,
-          message: 'expiresAfter must be between 1 and 48 hours.',
+          message: 'expiresAfter must be between 1 and 48 hours when using fixed expiry.',
         });
       }
       validExpiresAfter = parsed;
@@ -142,6 +170,8 @@ const createBoard = async (req, res, next) => {
       unlockAt: unlockAt ? new Date(unlockAt) : null,
       passwordHash,
       expiresAfter: validExpiresAfter,
+      expiryMode: chosenExpiryMode,
+      lastAccessedAt: Date.now(),
       attachedImages,
       whiteboardData: seededWhiteboardImages,
     });
@@ -179,10 +209,21 @@ const getBoardStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'We couldn\'t find this board. The link may be invalid.' });
     }
 
-    // Check if board has expired
+    // Check if board has expired (lazy evaluation) and mark soft-expired
     if (hasBoardExpired(board) && !board.isExpired) {
       board.isExpired = true;
       await board.save();
+    }
+
+    // Refresh lastAccessedAt when a user views the board metadata
+    // but do NOT refresh if the board is scheduled for a future unlock.
+    const now = Date.now();
+    if (!board.isExpired) {
+      const unlockInFuture = board.unlockAt && now < new Date(board.unlockAt).getTime();
+      if (!unlockInFuture) {
+        board.lastAccessedAt = new Date();
+        await board.save();
+      }
     }
 
     // Return only safe metadata — no content, no passwordHash.
@@ -195,6 +236,8 @@ const getBoardStatus = async (req, res, next) => {
       createdAt: board.createdAt,
       activatedAt: board.activatedAt,
       expiresAfter: board.expiresAfter,
+      expiryMode: board.expiryMode,
+      lastAccessedAt: board.lastAccessedAt,
       isExpired: board.isExpired,
       serverTime: Date.now(), // Provide server time for accurate countdown sync
     });
@@ -279,6 +322,10 @@ const unlockBoard = async (req, res, next) => {
       await board.save();
     }
 
+    // Refresh lastAccessedAt on successful unlock/access
+    board.lastAccessedAt = new Date();
+    await board.save();
+
     // ── Generate JWT for Socket Auth ──────────────────────────
     const boardToken = jwt.sign(
       { boardId: board.boardId },
@@ -305,4 +352,4 @@ const unlockBoard = async (req, res, next) => {
   }
 };
 
-module.exports = { createBoard, getBoardStatus, unlockBoard };
+module.exports = { createBoard, getBoardStatus, unlockBoard, hasBoardExpired };

@@ -785,12 +785,10 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
         />
 
         {textInput && (
-          <input
-            type="text"
+          <textarea
             autoFocus
             value={textInput.value}
             onChange={(e) => setTextInput({ ...textInput, value: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter') submitText(); }}
             onBlur={submitText}
             style={{
               position: 'absolute',
@@ -803,7 +801,11 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
               outline: 'none',
               zIndex: 30,
               minWidth: '100px',
-              padding: '2px'
+              padding: '4px',
+              resize: 'none',
+              lineHeight: '1.2',
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
             }}
           />
         )}

@@ -36,6 +36,7 @@ const uploadRoutes = require('./routes/uploadRoutes');
 const whiteboardRoutes = require('./routes/whiteboardRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const Board = require('./models/Board');
+const { hasBoardExpired } = require('./controllers/boardController');
 const path = require('path');
 const fs = require('fs');
 const { ensureUploadsDir, uploadsDir } = require('./middleware/upload');
@@ -270,6 +271,8 @@ io.on('connection', (socket) => {
       if (board && board.whiteboardData && board.whiteboardData.length > 0) {
         socket.emit('whiteboard_data', board.whiteboardData);
       }
+      // mark activity for this board (joined/viewed)
+      try { Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {}); } catch (e) {}
     } catch (err) {
       console.error(`[Socket.io] Error fetching whiteboard data for board ${boardId}:`, err.message);
     }
@@ -289,6 +292,8 @@ io.on('connection', (socket) => {
 
     // Queue update for batch DB save
     pendingTextUpdates.set(boardId, content);
+    // Refresh lastAccessedAt for activity
+    Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
 
     // Broadcast to every OTHER socket in the room immediately.
     socket.to(boardId).emit('receive_update', { boardId, content });
@@ -314,6 +319,8 @@ io.on('connection', (socket) => {
     const author = normalizeName(userName) || socket.data.boardUserName || 'Anonymous';
     socket.to(boardId).emit('image_added', { boardId, content, imageUrl, userName: author });
     console.log(`[Socket.io] Image added to board: ${boardId}`);
+    // mark activity
+    Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
   });
 
   // ── Event: draw_sync ──────────────────────────────────────
@@ -332,6 +339,8 @@ io.on('connection', (socket) => {
     if (!pendingStrokes.has(boardId)) pendingStrokes.set(boardId, []);
     pendingStrokes.get(boardId).push(stroke);
     socket.to(boardId).emit('receive_stroke', stroke);
+    // mark activity
+    Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
   });
 
   socket.on('draw_undo', async () => {
@@ -371,6 +380,8 @@ io.on('connection', (socket) => {
         await board.save();
       }
       socket.to(boardId).emit('whiteboard_image_added', image);
+      // mark activity
+      Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
     } catch (err) {
       console.error(`[Socket.io] Error saving whiteboard image:`, err.message);
     }
@@ -388,6 +399,7 @@ io.on('connection', (socket) => {
       ));
       await board.save();
       socket.to(boardId).emit('whiteboard_image_updated', image);
+      Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
     } catch (err) {
       console.error('[Socket.io] Error updating whiteboard image:', err.message);
     }
@@ -403,6 +415,7 @@ io.on('connection', (socket) => {
       board.whiteboardData = data.filter(item => !(item && item.type === 'image' && item.id === imageId));
       await board.save();
       socket.to(boardId).emit('whiteboard_image_removed', { imageId });
+      Board.updateOne({ boardId }, { $set: { lastAccessedAt: new Date() } }).catch(() => {});
     } catch (err) {
       console.error('[Socket.io] Error removing whiteboard image:', err.message);
     }
@@ -594,73 +607,44 @@ mongoose
     setInterval(async () => {
       try {
         const now = new Date();
-        let deletedBoardsCount = 0;
-        let deletedWhiteboardsCount = 0;
-
-        // Helper to delete physical files
-        const deleteImages = (imagesArray) => {
-          if (!imagesArray || imagesArray.length === 0) return;
-          imagesArray.forEach(imageUrl => {
-            try {
-              const fileName = imageUrl.split('/uploads/')[1];
-              if (fileName) {
-                const filePath = path.join(__dirname, 'uploads', fileName);
-                if (fs.existsSync(filePath)) {
-                  fs.unlinkSync(filePath);
-                }
-              }
-            } catch (err) {
-              console.error(`[Cleanup] Failed to delete image ${imageUrl}:`, err.message);
+        // Instead of hard-deleting immediately, mark boards as expired
+        // (soft expiration) when inactivity/fixed rules indicate expiry.
+        const activeBoards = await Board.find({ isExpired: false });
+        let markedExpired = 0;
+        for (const b of activeBoards) {
+          try {
+            if (hasBoardExpired(b)) {
+              b.isExpired = true;
+              await b.save();
+              markedExpired++;
             }
-          });
-        };
-
-        // 1. All boards where isExpired: true
-        const explicitlyExpired = await Board.find({ isExpired: true });
-        
-        // 2. All boards where activatedAt exists and activatedAt + expiresAfter hours has passed
-        const activeBoards = await Board.find({ activatedAt: { $ne: null }, isExpired: false });
-        const dynamicallyExpired = activeBoards.filter(b => {
-          const expiryTime = new Date(b.activatedAt).getTime() + b.expiresAfter * 60 * 60 * 1000;
-          return now.getTime() > expiryTime;
-        });
-
-        // 3. All boards older than 7 days that were never activated
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const oldUnactivated = await Board.find({
-          activatedAt: null,
-          createdAt: { $lt: sevenDaysAgo }
-        });
-
-        const allBoardsToDelete = [...explicitlyExpired, ...dynamicallyExpired, ...oldUnactivated];
-        
-        // Remove duplicates if any
-        const uniqueBoardsToDelete = Array.from(new Set(allBoardsToDelete.map(b => b._id.toString())))
-          .map(id => allBoardsToDelete.find(b => b._id.toString() === id));
-
-        for (const board of uniqueBoardsToDelete) {
-          deleteImages(board.attachedImages);
-          deleteImages(board.images);
-          await Board.deleteOne({ _id: board._id });
-          deletedBoardsCount++;
+          } catch (err) {
+            console.error('[Cleanup] Error marking board expired:', err.message);
+          }
+        }
+        if (markedExpired > 0) {
+          console.log(`[Cleanup] Marked ${markedExpired} boards as expired (soft)`);
         }
 
-        // 4. All whiteboards where expiresAt is older than current time
+        // 4. All whiteboards where expiresAt is older than current time (unchanged)
         const expiredWhiteboards = await Whiteboard.find({ expiresAt: { $lt: now } });
         for (const wb of expiredWhiteboards) {
-          if (wb.images && wb.images.length > 0) {
-            wb.images.forEach(img => {
-              if (img && img.src && img.src.includes('/uploads/')) {
-                 deleteImages([img.src]);
-              }
-            });
+          try {
+            if (wb.images && wb.images.length > 0) {
+              wb.images.forEach(img => {
+                if (img && img.src && img.src.includes('/uploads/')) {
+                   const fileName = img.src.split('/uploads/')[1];
+                   if (fileName) {
+                     const filePath = path.join(__dirname, 'uploads', fileName);
+                     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                   }
+                }
+              });
+            }
+            await Whiteboard.deleteOne({ _id: wb._id });
+          } catch (err) {
+            console.error('[Cleanup] Error deleting whiteboard:', err.message);
           }
-          await Whiteboard.deleteOne({ _id: wb._id });
-          deletedWhiteboardsCount++;
-        }
-
-        if (deletedBoardsCount > 0 || deletedWhiteboardsCount > 0) {
-          console.log(`[Cleanup] Deleted ${deletedBoardsCount} boards, ${deletedWhiteboardsCount} whiteboards`);
         }
       } catch (err) {
         console.error('[Cleanup] Error during daily cleanup check:', err.message);

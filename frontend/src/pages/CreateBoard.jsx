@@ -33,6 +33,7 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
   const [content,    setContent]    = useState('');
   const [boardName,     setBoardName]     = useState('');
   const [expiresAfter,  setExpiresAfter]  = useState('');
+  const [expiryMode,    setExpiryMode]    = useState('inactivity');
   const [attachments,   setAttachments]   = useState([]);
   const fileInputRef = useRef(null);
 
@@ -58,7 +59,8 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
       if (boardName.trim()) formData.append('boardName', boardName.trim());
       if (needsDate && unlockAt) formData.append('unlockAt', new Date(unlockAt).toISOString());
       if (needsPassword && password) formData.append('password', password);
-      if (expiresAfter) formData.append('expiresAfter', Number(expiresAfter));
+      formData.append('expiryMode', expiryMode);
+      if (expiryMode === 'fixed' && expiresAfter) formData.append('expiresAfter', Number(expiresAfter));
       
       attachments.forEach(file => {
         formData.append('images', file);
@@ -258,6 +260,19 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
             <label htmlFor="expires-after" className="block text-sm font-semibold text-[#ED93B1] mb-2 uppercase tracking-wider">
               Link Expiry <span className="text-xs normal-case bb-muted">(optional)</span>
             </label>
+            <div className="mb-3">
+              <select
+                id="expiry-mode"
+                value={expiryMode}
+                onChange={e => setExpiryMode(e.target.value)}
+                className="bb-input"
+              >
+                <option value="inactivity">Inactivity (default — expires after 7 days of no activity)</option>
+                <option value="fixed">Fixed (custom hours after first unlock)</option>
+                <option value="none">No automatic expiry</option>
+              </select>
+            </div>
+
             <input
               id="expires-after"
               type="number"
@@ -265,10 +280,10 @@ export default function CreateBoard({ darkMode, toggleTheme }) {
               max={48}
               value={expiresAfter}
               onChange={e => setExpiresAfter(e.target.value)}
-              placeholder="Default: 3 hours, max 48, min 1"
+              placeholder="When using Fixed mode: hours after first unlock"
               className="bb-input"
             />
-            <p className="text-xs bb-muted mt-1.5">How many hours the link stays valid after first unlock.</p>
+            <p className="text-xs bb-muted mt-1.5">By default, boards use inactivity expiry (7 days). Use Fixed mode to set hours after first unlock, or choose No automatic expiry.</p>
           </div>
 
           {/* Error */}

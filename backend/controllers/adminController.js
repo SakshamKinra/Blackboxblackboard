@@ -104,7 +104,7 @@ const adminLogin = async (req, res, next) => {
 const getAllBoards = async (req, res, next) => {
   try {
     const boards = await Board.find()
-      .select('-_id boardId boardName unlockType createdAt activatedAt expiresAfter isExpired')
+      .select('-_id boardId boardName unlockType createdAt activatedAt expiresAfter expiryMode lastAccessedAt isExpired')
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

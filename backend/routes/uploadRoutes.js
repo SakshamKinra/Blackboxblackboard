@@ -23,14 +23,13 @@ router.post('/:id/upload', upload.single('image'), async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Board not found.' });
     }
 
-    // Check if board has expired
-    const now = new Date();
-    const expiryTime = board.activatedAt ? (new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000) : null;
-    if (board.isExpired || (expiryTime && now.getTime() > expiryTime)) {
-      if (!board.isExpired) {
-        board.isExpired = true;
-        await board.save();
-      }
+    // Check if board has expired using centralized logic
+    const { hasBoardExpired } = require('../controllers/boardController');
+    if (hasBoardExpired(board) && !board.isExpired) {
+      board.isExpired = true;
+      await board.save();
+    }
+    if (board.isExpired) {
       return res.status(410).json({ success: false, message: 'Cannot upload to an expired board.' });
     }
 
@@ -50,6 +49,8 @@ router.post('/:id/upload', upload.single('image'), async (req, res, next) => {
     board.images.push(imageUrl);
     // Source of truth for board whiteboard layer.
     board.whiteboardData.push(image);
+    // Update lastAccessedAt to refresh inactivity window
+    board.lastAccessedAt = new Date();
     await board.save();
 
     return res.status(200).json({

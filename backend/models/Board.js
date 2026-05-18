@@ -92,6 +92,29 @@ const boardSchema = new mongoose.Schema({
   },
 
   // ---------------------------------------------------------
+  // lastAccessedAt — last time this board was actively viewed,
+  // unlocked, or edited. Used for inactivity-based expiry.
+  // Defaults to creation time so new boards start their window.
+  // ---------------------------------------------------------
+  lastAccessedAt: {
+    type: Date,
+    default: Date.now,
+  },
+
+  // ---------------------------------------------------------
+  // expiryMode — determines how expiry is evaluated for this
+  // board. Options:
+  //   'inactivity' (default) — expires after inactivity window
+  //   'fixed'              — expires using activatedAt + expiresAfter
+  //   'none'               — never expires automatically
+  // ---------------------------------------------------------
+  expiryMode: {
+    type: String,
+    enum: ['inactivity', 'fixed', 'none'],
+    default: 'inactivity',
+  },
+
+  // ---------------------------------------------------------
   // images — URLs of images uploaded to the text board
   // ---------------------------------------------------------
   images: {

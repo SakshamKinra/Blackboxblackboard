@@ -29,36 +29,59 @@ function Navbar({ darkMode, toggleTheme, navigate }) {
 }
 
 // ── Expiry countdown banner ─────────────────────────────────
-function ExpiryBanner({ activatedAt, expiresAfter }) {
+function ExpiryBanner({ activatedAt, expiresAfter, expiryMode, lastAccessedAt, unlockAt }) {
   const [timeLeft, setTimeLeft] = useState(null);
 
   useEffect(() => {
     function calc() {
-      if (!activatedAt || !expiresAfter) return null;
-      const expiryMs = new Date(activatedAt).getTime() + expiresAfter * 60 * 60 * 1000;
-      const diff = expiryMs - Date.now();
+      const now = Date.now();
+      // If there's a future unlock, show unlock state instead
+      if (unlockAt && now < new Date(unlockAt).getTime()) return { label: 'Unlocks later' };
+
+      if (expiryMode === 'none') return { label: 'No automatic expiry' };
+
+      if (expiryMode === 'fixed') {
+        if (!activatedAt || !expiresAfter) return null;
+        const expiryMs = new Date(activatedAt).getTime() + expiresAfter * 60 * 60 * 1000;
+        const diff = expiryMs - now;
+        if (diff <= 0) return null;
+        return { ms: diff };
+      }
+
+      // Default: inactivity-based (7 days)
+      const last = lastAccessedAt ? new Date(lastAccessedAt).getTime() : (activatedAt ? new Date(activatedAt).getTime() : null);
+      if (!last) return null;
+      const expiryMs = last + 7 * 24 * 60 * 60 * 1000;
+      const diff = expiryMs - now;
       if (diff <= 0) return null;
-      return {
-        hours:   Math.floor(diff / (1000 * 60 * 60)),
-        minutes: Math.floor((diff / (1000 * 60)) % 60),
-      };
+      return { ms: diff };
     }
 
-    setTimeLeft(calc());
+    function format(ms) {
+      if (!ms) return null;
+      const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+      if (days >= 1) return `${days}d`;
+      const hours = Math.floor(ms / (1000 * 60 * 60));
+      const minutes = Math.floor((ms / (1000 * 60)) % 60);
+      return `${hours}h ${minutes}m`;
+    }
+
+    const initial = calc();
+    setTimeLeft(initial && initial.ms ? format(initial.ms) : (initial && initial.label ? initial.label : null));
     const timer = setInterval(() => {
       const t = calc();
-      setTimeLeft(t);
-    }, 30000); // update every 30s
+      setTimeLeft(t && t.ms ? format(t.ms) : (t && t.label ? t.label : null));
+    }, 30000);
 
     return () => clearInterval(timer);
-  }, [activatedAt, expiresAfter]);
+  }, [activatedAt, expiresAfter, expiryMode, lastAccessedAt, unlockAt]);
 
   if (!timeLeft) return null;
 
   return (
     <div className="px-4 py-2 text-center text-sm font-semibold border-b"
          style={{ backgroundColor: 'var(--expiry-bg)', color: 'var(--expiry-text)', borderColor: 'var(--expiry-border)' }}>
-      {timeLeft.hours}h {timeLeft.minutes}m until expiration
+      {timeLeft} until expiration
     </div>
   );
 }
@@ -178,7 +201,13 @@ export default function BoardPage({ darkMode, toggleTheme }) {
           <div className="flex-1 flex flex-col">
             {/* Expiry countdown banner */}
             {activatedAt && (
-              <ExpiryBanner activatedAt={activatedAt} expiresAfter={expiresAfter} />
+              <ExpiryBanner
+                activatedAt={activatedAt}
+                expiresAfter={expiresAfter}
+                expiryMode={board?.expiryMode}
+                lastAccessedAt={board?.lastAccessedAt}
+                unlockAt={board?.unlockAt}
+              />
             )}
 
             <div className="px-6 py-3 border-b border-[#C9A84C]/10 bb-card flex items-center justify-between overflow-x-auto">

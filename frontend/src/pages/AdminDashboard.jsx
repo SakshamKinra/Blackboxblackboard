@@ -91,11 +91,23 @@ export default function AdminDashboard({ darkMode, toggleTheme }) {
 
   function getExpiryStatus(board) {
     if (board.isExpired) return { label: 'Expired', color: '#ED93B1' };
-    if (!board.activatedAt) return { label: 'Not activated', color: '#8878a8' };
-    const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
-    if (Date.now() > expiryTime) return { label: 'Expired', color: '#ED93B1' };
-    const hoursLeft = Math.max(0, ((expiryTime - Date.now()) / (1000 * 60 * 60))).toFixed(1);
-    return { label: `${hoursLeft}h left`, color: '#1D9E75' };
+    const now = Date.now();
+    if (board.unlockAt && now < new Date(board.unlockAt).getTime()) return { label: 'Locked until unlock', color: '#8878a8' };
+    if (board.expiryMode === 'none') return { label: 'No expiry', color: '#AFA9EC' };
+    if (board.expiryMode === 'fixed') {
+      if (!board.activatedAt || !board.expiresAfter) return { label: 'Not activated', color: '#8878a8' };
+      const expiryTime = new Date(board.activatedAt).getTime() + board.expiresAfter * 60 * 60 * 1000;
+      if (Date.now() > expiryTime) return { label: 'Expired', color: '#ED93B1' };
+      const hoursLeft = Math.max(0, ((expiryTime - Date.now()) / (1000 * 60 * 60))).toFixed(1);
+      return { label: `${hoursLeft}h left`, color: '#1D9E75' };
+    }
+    // inactivity-based
+    const last = board.lastAccessedAt ? new Date(board.lastAccessedAt).getTime() : (board.activatedAt ? new Date(board.activatedAt).getTime() : null);
+    if (!last) return { label: 'Not activated', color: '#8878a8' };
+    const expiryMs = last + 7 * 24 * 60 * 60 * 1000;
+    if (Date.now() > expiryMs) return { label: 'Expired', color: '#ED93B1' };
+    const daysLeft = Math.max(0, Math.ceil((expiryMs - Date.now()) / (24 * 60 * 60 * 1000)));
+    return { label: `${daysLeft}d left`, color: '#1D9E75' };
   }
 
   const lockTypeIcons = { date: '📅', password: '🔑', both: '🔒' };
