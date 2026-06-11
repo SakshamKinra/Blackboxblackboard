@@ -4,11 +4,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
-import { Pen, Eraser, Trash2, Maximize, Download, Image as ImageIcon, Copy, Check, Type, Undo2, Redo2, Square, StickyNote as StickyIcon, Circle, Triangle } from 'lucide-react';
+import { Pen, Eraser, Trash2, Maximize, Download, Image as ImageIcon, Type, Undo2, Redo2, Square, StickyNote as StickyIcon, Circle, Triangle, Share2, Grid } from 'lucide-react';
 import ImageObject from '../components/ImageObject';
 import TextObject from '../components/TextObject';
 import ShapeObject from '../components/ShapeObject';
 import StickyNote from '../components/StickyNote';
+import { useUserColor } from '../hooks/useUserColor';
+import { AvatarBar } from '../components/shared/AvatarBar';
+import { RemoteCursor } from '../components/whiteboard/RemoteCursor';
+import { ShareModal } from '../components/shared/ShareModal';
 
 const API = process.env.REACT_APP_API_URL;
 const SOCKET_URL = process.env.REACT_APP_API_URL;
@@ -22,7 +26,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   const [ctx, setCtx] = useState(null);
   const [socket, setSocket] = useState(null);
-  const [userCount, setUserCount] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -48,7 +51,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const imagesRef = useRef([]);
   useEffect(() => { imagesRef.current = images; }, [images]);
 
-  const [copied, setCopied] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [joined, setJoined] = useState(false);
 
@@ -58,6 +60,13 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
   const socketRef = useRef(null);          // mirror of socket state for beforeunload
   const unpersistedStrokesRef = useRef([]); // strokes emitted but not yet flushed to DB
   const [redoStack, setRedoStack] = useState([]);
+  const [typingUsers, setTypingUsers] = useState({});
+  const [remoteCursors, setRemoteCursors] = useState({});
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [gridType, setGridType] = useState('none'); // 'none' | 'dots' | 'lines'
+  const lastCursorEmitRef = useRef(0);
+
+  const { myColor, myNumber, myUserId, activeUsers } = useUserColor(socket);
 
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
@@ -93,10 +102,12 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           setSocket(newSocket);
 
           newSocket.on('connect', () => {
-            newSocket.emit('join_whiteboard', { whiteboardId: id, userName: displayName.trim() });
+            const userId = localStorage.getItem('bb_user_id') || Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('bb_user_id', userId);
+            newSocket.emit('join_whiteboard', { whiteboardId: id, userName: displayName.trim(), userId });
           });
 
-          newSocket.on('wb_user_joined', () => setUserCount(c => c + 1));
+
           newSocket.on('wb_receive_sync_stroke', stroke => {
             liveStrokesRef.current[stroke.id] = stroke;
             renderAllStrokes();
@@ -117,6 +128,24 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           newSocket.on('wb_image_removed', ({ imageId }) => setImages(prev => prev.filter(i => i.id !== imageId)));
           newSocket.on('wb_undo', () => {
             setStrokes(prev => prev.slice(0, -1));
+          });
+          newSocket.on('user_typing_update', ({ userId, textBoxId, isTyping, userName, color }) => {
+            setTypingUsers(prev => {
+              if (!isTyping) {
+                const next = { ...prev };
+                delete next[textBoxId];
+                return next;
+              }
+              return { ...prev, [textBoxId]: { userId, userName, color } };
+            });
+          });
+          newSocket.on('receive_text_content', ({ objectId, content }) => {
+            if (activeTextId !== objectId) {
+              setImages(prev => prev.map(img => img.id === objectId ? { ...img, content } : img));
+            }
+          });
+          newSocket.on('cursor_move', ({ userId, x, y, userName, color }) => {
+            setRemoteCursors(prev => ({ ...prev, [userId]: { x, y, userName, color } }));
           });
 
           setLoading(false);
@@ -371,7 +400,9 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       width: 200,
       height: 36,
       userName: displayName,
-      authorName: localStorage.getItem('bb_user_name') || 'Anonymous'
+      authorName: displayName || localStorage.getItem('bb_user_name') || `User ${myNumber}`,
+      authorColor: myColor,
+      authorId: myUserId
     };
     setRedoStack([]);
     setImages(prev => [...prev, textObj]);
@@ -381,21 +412,29 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
 
   const draw = (e) => {
     e.preventDefault();
+    const coords = getCoordinates(e);
+
+    // Throttle cursor emit
+    const now = Date.now();
+    if (!lastCursorEmitRef.current || now - lastCursorEmitRef.current > 50) {
+      if (socket && socket.connected) {
+        socket.emit('cursor_move', { whiteboardId: id, x: coords.x, y: coords.y, userName: displayName, color: myColor });
+      }
+      lastCursorEmitRef.current = now;
+    }
 
     // Update shape ghost during drag
     if (isDraftingShape && shapeDraftRef.current) {
-      const { x, y } = getCoordinates(e);
       const anchor = shapeDraftRef.current;
-      anchor.w = x - anchor.x;
-      anchor.h = y - anchor.y;
+      anchor.w = coords.x - anchor.x;
+      anchor.h = coords.y - anchor.y;
       drawGhostShape(anchor);
       return;
     }
 
     if (!isDrawing || !ctx || !currentStrokeRef.current) return;
-    const { x, y } = getCoordinates(e);
-
-    currentStrokeRef.current.points.push({ x, y });
+    
+    currentStrokeRef.current.points.push({ x: coords.x, y: coords.y });
     renderAllStrokes();
 
     if (socket && socket.connected) {
@@ -553,12 +592,6 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
     link.click();
   };
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   if (!joined) {
     return (
       <div className="bb-bg min-h-screen flex items-center justify-center p-6">
@@ -620,17 +653,15 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           <div className="h-6 w-px bg-white/10 hidden sm:block"></div>
           <div>
             <h1 className="font-bold bb-text text-sm sm:text-base leading-none mb-1">{title}</h1>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="flex items-center gap-1 text-[#1D9E75] font-medium">
-                <span className="w-2 h-2 rounded-full bg-[#1D9E75] animate-pulse"></span> {userCount} online
-              </span>
+            <div className="flex items-center gap-2 text-xs mt-1">
+              <AvatarBar users={activeUsers} />
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/30 text-xs font-semibold text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all">
-            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied' : 'Share'}
+          <button onClick={() => setIsShareModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/30 text-xs font-semibold text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all">
+            <Share2 size={14} /> Share
           </button>
           <button onClick={toggleTheme} className="p-2 rounded-full border border-white/5 hover:bg-white/5 transition-all text-xl leading-none">
             {darkMode ? '☀️' : '🌙'}
@@ -639,8 +670,8 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       </div>
 
       {/* ── Toolbar ───────────────────────────────────────────── */}
-      <div data-wb-toolbar="true" className="flex items-center justify-between px-4 py-2 border-b z-20 overflow-x-auto whiteboard-toolbar" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
-        <div className="flex items-center gap-4 shrink-0">
+      <div data-wb-toolbar="true" className="fixed bottom-0 left-0 right-0 md:relative md:flex items-center justify-between px-2 md:px-4 py-2 border-t md:border-t-0 md:border-b z-50 overflow-x-auto no-scrollbar whiteboard-toolbar shadow-[0_-10px_30px_rgba(0,0,0,0.2)] md:shadow-none" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
+        <div className="flex items-center gap-2 md:gap-4 shrink-0 mx-auto min-w-max">
           <div className="flex items-center gap-2 border-r border-[#C9A84C]/20 pr-4">
             <button onClick={() => { setToolType('pen'); setActiveTextId(null); }} className={`p-1.5 rounded-lg transition-colors ${toolType === 'pen' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Pen"><Pen size={18} /></button>
             <button onClick={() => { setToolType('eraser'); setActiveTextId(null); }} className={`p-1.5 rounded-lg transition-colors ${toolType === 'eraser' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Eraser"><Eraser size={18} /></button>
@@ -696,14 +727,14 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 border-r border-[#C9A84C]/20 pr-4 hidden md:flex">
+          <div className="flex items-center gap-1.5 border-r border-[#C9A84C]/20 pr-2 md:pr-4 hidden md:flex">
             {palette.map(c => (
               <button key={c} onClick={() => { setColor(c); if (toolType === 'eraser') setToolType('pen'); }} className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c && toolType !== 'eraser' ? 'scale-125 border-gray-400' : 'border-transparent'}`} style={{ backgroundColor: c }} title={c} />
             ))}
             <input type="color" value={color} onChange={(e) => { setColor(e.target.value); if (toolType === 'eraser') setToolType('pen'); }} className="w-6 h-6 p-0 border-0 rounded cursor-pointer ml-1" />
           </div>
 
-          <div className="flex items-center gap-2 border-r border-[#C9A84C]/20 pr-4">
+          <div className="flex items-center gap-1 md:gap-2 border-r border-[#C9A84C]/20 pr-2 md:pr-4">
             <button onClick={undoStroke} disabled={strokes.length === 0} className={`p-1.5 rounded-lg transition-colors ${strokes.length === 0 ? 'text-gray-600' : 'text-gray-400 hover:bg-gray-700/30'}`} title="Undo">
               <Undo2 size={16} />
             </button>
@@ -717,9 +748,17 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             <button onClick={clearCanvas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ED93B1]/40 text-sm font-medium text-[#ED93B1] hover:bg-[#ED93B1]/10 transition-all">
               <Trash2 size={16} /> Clear
             </button>
+            <div className="w-px h-6 bg-[#C9A84C]/20 mx-1 hidden sm:block"></div>
+            <button 
+              onClick={() => setGridType(g => g === 'none' ? 'dots' : g === 'dots' ? 'lines' : 'none')}
+              className={`p-1.5 rounded-lg transition-colors hidden sm:block ${gridType !== 'none' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+              title="Toggle Grid"
+            >
+              <Grid size={16} />
+            </button>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 md:gap-2">
             <button onClick={downloadPNG} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/20 text-sm font-medium text-gray-300 hover:bg-white/10 transition-all" title="Download PNG">
               <Download size={16} /> Export
             </button>
@@ -731,7 +770,7 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
       </div>
 
       {/* ── Canvas Area ───────────────────────────────────────── */}
-      <div ref={containerRef} className="flex-1 relative overflow-hidden bg-[var(--bg)]" onContextMenu={(e) => e.preventDefault()}>
+      <div ref={containerRef} className={`flex-1 relative overflow-hidden bg-[var(--bg)] ${gridType === 'dots' ? 'bg-dot-grid' : gridType === 'lines' ? 'bg-line-grid' : ''}`} onContextMenu={(e) => e.preventDefault()}>
 
         {/* Render images, text, shapes, and stickies as DOM overlays */}
         {images.map((img) => {
@@ -743,6 +782,10 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
               removeText={removeImage}
               activeTextId={activeTextId}
               setActiveTextId={setActiveTextId}
+              socket={socket}
+              myUserId={myUserId}
+              typingUsers={typingUsers}
+              boardId={id}
             />
           );
           if (img.type === 'shape') return (
@@ -770,6 +813,11 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
             />
           );
         })}
+
+        {/* Render Remote Cursors */}
+        {Object.values(remoteCursors).map((c, i) => (
+          <RemoteCursor key={`cursor-${i}`} x={c.x} y={c.y} color={c.color} userName={c.userName} />
+        ))}
 
         <canvas
           ref={canvasRef}
@@ -810,6 +858,13 @@ export default function WhiteboardPage({ darkMode, toggleTheme }) {
           />
         )}
       </div>
+
+      <ShareModal 
+        isOpen={isShareModalOpen} 
+        onClose={() => setIsShareModalOpen(false)} 
+        link={window.location.href}
+        title={title || 'Whiteboard'}
+      />
 
       {/* ── Shape picker portal (fixed to escape toolbar overflow:hidden) */}
       {showShapePicker && (

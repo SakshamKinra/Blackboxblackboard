@@ -11,6 +11,8 @@ import AdminDashboard   from './pages/AdminDashboard';
 import NotFoundScreen   from './pages/NotFoundScreen';
 import CreateWhiteboard from './pages/CreateWhiteboard';
 import WhiteboardPage   from './pages/WhiteboardPage';
+import { CommandPalette } from './components/shared/CommandPalette';
+import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   // ── Theme: persisted in localStorage, applied as 'dark' class on <html>
@@ -44,6 +46,17 @@ export default function App() {
         <Route path="/whiteboard/:id"   element={<WhiteboardPage   darkMode={darkMode} toggleTheme={toggleTheme} />} />
         <Route path="*"                 element={<NotFoundScreen   darkMode={darkMode} toggleTheme={toggleTheme} />} />
       </Routes>
+      <CommandPalette darkMode={darkMode} toggleTheme={toggleTheme} />
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: darkMode ? '#1a1a2e' : '#fff',
+            color: darkMode ? '#fff' : '#000',
+            border: '1px solid #C9A84C40',
+          },
+        }}
+      />
     </Router>
   );
 }

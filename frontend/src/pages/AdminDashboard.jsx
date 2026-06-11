@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import toast from 'react-hot-toast';
+import { SkeletonCard } from '../components/shared/SkeletonCard';
 
 const API = process.env.REACT_APP_API_URL;
 
@@ -65,7 +67,7 @@ export default function AdminDashboard({ darkMode, toggleTheme }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (data.success) {
-        alert(data.message);
+        toast.success(data.message);
         // Refetch data
         const [boardsRes, wbsRes] = await Promise.all([
           axios.get(`${API}/api/admin/boards`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -73,9 +75,11 @@ export default function AdminDashboard({ darkMode, toggleTheme }) {
         ]);
         if (boardsRes.data.success) setBoards(boardsRes.data.boards);
         if (wbsRes.data.success) setWhiteboards(wbsRes.data.whiteboards);
+      } else {
+        toast.error('Failed to delete.');
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Delete failed.');
+      toast.error(err.response?.data?.message || 'Delete failed.');
     } finally {
       setLoading(false);
     }
@@ -158,7 +162,7 @@ export default function AdminDashboard({ darkMode, toggleTheme }) {
               🗑️ Expired Whiteboards
             </button>
             <button onClick={() => handleNuke('old')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[#AFA9EC]/40 text-[#AFA9EC] hover:bg-[#AFA9EC]/10 text-xs font-semibold transition-all">
-              🗑️ >7 Days Old
+              🗑️ &gt;7 Days Old
             </button>
             <button onClick={() => handleNuke('all')} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/10 text-xs font-bold transition-all">
               💣 Delete All
@@ -167,9 +171,10 @@ export default function AdminDashboard({ darkMode, toggleTheme }) {
         </div>
 
         {loading && (
-          <div className="flex flex-col items-center justify-center py-20 bb-muted gap-4">
-            <div className="w-10 h-10 border-4 border-[#C9A84C] border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm">Loading boards…</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
           </div>
         )}
 

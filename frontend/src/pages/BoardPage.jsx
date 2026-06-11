@@ -6,6 +6,10 @@ import { io } from 'socket.io-client';
 import LockScreen from '../components/LockScreen';
 import Editor     from '../components/Editor';
 import Whiteboard from '../components/Whiteboard';
+import { useUserColor } from '../hooks/useUserColor';
+import { AvatarBar } from '../components/shared/AvatarBar';
+import { ShareModal } from '../components/shared/ShareModal';
+import { Share2 } from 'lucide-react';
 
 const SOCKET_URL = process.env.REACT_APP_API_URL;
 const API = process.env.REACT_APP_API_URL;
@@ -124,6 +128,9 @@ export default function BoardPage({ darkMode, toggleTheme }) {
   const [socket,       setSocket]       = useState(null);
   const [connected,    setConnected]    = useState(false);
   const [userCount,    setUserCount]    = useState(1);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  const { activeUsers } = useUserColor(socket);
 
   useEffect(() => {
     async function fetchBoard() {
@@ -177,7 +184,9 @@ export default function BoardPage({ darkMode, toggleTheme }) {
       setConnected(true);
       const savedName = displayName || sessionStorage.getItem(`bb-name:${id}`) || '';
       if (!savedName.trim()) return;
-      newSocket.emit('join_board', { boardId: id, userName: savedName });
+      const userId = localStorage.getItem('bb_user_id') || Math.random().toString(36).substr(2, 9);
+      localStorage.setItem('bb_user_id', userId);
+      newSocket.emit('join_board', { boardId: id, userName: savedName, userId });
     });
 
     newSocket.on('user_joined', () => setUserCount(c => c + 1));
@@ -216,21 +225,30 @@ export default function BoardPage({ darkMode, toggleTheme }) {
                 {boardName && boardName !== 'Untitled Board' && (
                   <span className="font-playfair bb-text text-lg font-semibold">{boardName}</span>
                 )}
-                <span className="bb-muted text-sm font-mono">{id}</span>
+                <span className="bb-muted text-sm font-mono mr-4">{id}</span>
+                <AvatarBar users={activeUsers} />
               </div>
-              <div className="flex bg-[var(--card)] border border-[var(--input-border)] rounded-lg shrink-0 ml-4">
+              <div className="flex items-center gap-4 shrink-0">
                 <button 
-                  onClick={() => setActiveTab('text')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'text' ? 'text-[var(--text)] border-b-2 border-[#C9A84C]' : 'text-[var(--muted)] hover:text-[#C9A84C]'}`}
+                  onClick={() => setIsShareModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#C9A84C]/30 text-xs font-semibold text-[#C9A84C] hover:bg-[#C9A84C]/10 transition-all"
                 >
-                  📝 Text
+                  <Share2 size={14} /> Share
                 </button>
-                <button 
-                  onClick={() => setActiveTab('whiteboard')}
-                  className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'whiteboard' ? 'text-[var(--text)] border-b-2 border-[#C9A84C]' : 'text-[var(--muted)] hover:text-[#C9A84C]'}`}
-                >
-                  🎨 Whiteboard
-                </button>
+                <div className="flex bg-[var(--card)] border border-[var(--input-border)] rounded-lg">
+                  <button 
+                    onClick={() => setActiveTab('text')}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'text' ? 'text-[var(--text)] border-b-2 border-[#C9A84C]' : 'text-[var(--muted)] hover:text-[#C9A84C]'}`}
+                  >
+                    📝 Text
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('whiteboard')}
+                    className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'whiteboard' ? 'text-[var(--text)] border-b-2 border-[#C9A84C]' : 'text-[var(--muted)] hover:text-[#C9A84C]'}`}
+                  >
+                    🎨 Whiteboard
+                  </button>
+                </div>
               </div>
             </div>
             <div className="flex-1 relative">
@@ -241,6 +259,13 @@ export default function BoardPage({ darkMode, toggleTheme }) {
                 <Whiteboard boardId={id} socket={socket} connected={connected} userCount={userCount} displayName={displayName} />
               </div>
             </div>
+            
+            <ShareModal 
+              isOpen={isShareModalOpen} 
+              onClose={() => setIsShareModalOpen(false)} 
+              link={window.location.href}
+              title={boardName || 'Board'}
+            />
           </div>
         ) : (
           <LockScreen board={board} onUnlock={handleUnlocked} />

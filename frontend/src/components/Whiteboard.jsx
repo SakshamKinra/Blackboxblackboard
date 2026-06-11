@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pen, Eraser, Trash2, Image as ImageIcon, Type, Undo2, Redo2, Square, StickyNote as StickyIcon, Circle, Triangle } from 'lucide-react';
+import { Pen, Eraser, Trash2, Image as ImageIcon, Type, Undo2, Redo2, Square, StickyNote as StickyIcon, Circle, Triangle, Grid } from 'lucide-react';
 import ImageObject from './ImageObject';
 import TextObject from './TextObject';
 import ShapeObject from './ShapeObject';
 import StickyNote from './StickyNote';
+import { useUserColor } from '../hooks/useUserColor';
+import { RemoteCursor } from './whiteboard/RemoteCursor';
 const API = process.env.REACT_APP_API_URL;
 
 export default function Whiteboard({ boardId, socket, connected, userCount, displayName }) {
@@ -27,6 +29,11 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const [activeTextId, setActiveTextId] = useState(null);
   const [isDraftingShape, setIsDraftingShape] = useState(false);
   const [redoStack, setRedoStack] = useState([]);
+  const [typingUsers, setTypingUsers] = useState({});
+  const [remoteCursors, setRemoteCursors] = useState({});
+  const [gridType, setGridType] = useState('none'); // 'none' | 'dots' | 'lines'
+
+  const { myColor, myNumber, myUserId } = useUserColor(socket);
 
   const currentStrokeRef = useRef(null);
   const liveStrokesRef = useRef({});
@@ -35,6 +42,7 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
   const shapeDraftRef = useRef(null);
   const imagesRef = useRef([]);
   const unpersistedStrokesRef = useRef([]);
+  const lastCursorEmitRef = useRef(0);
 
   useEffect(() => { strokesRef.current = strokes; }, [strokes]);
   useEffect(() => { imagesRef.current = images; }, [images]);
@@ -249,6 +257,27 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       setImages((prev) => prev.filter((img) => img.id !== imageId));
     };
 
+    const handleUserTypingUpdate = ({ userId, textBoxId, isTyping, userName, color }) => {
+      setTypingUsers(prev => {
+        if (!isTyping) {
+          const next = { ...prev };
+          delete next[textBoxId];
+          return next;
+        }
+        return { ...prev, [textBoxId]: { userId, userName, color } };
+      });
+    };
+
+    const handleReceiveTextContent = ({ objectId, content }) => {
+      if (activeTextId !== objectId) {
+        setImages(prev => prev.map(img => img.id === objectId ? { ...img, content } : img));
+      }
+    };
+
+    const handleCursorMove = ({ userId, x, y, userName, color }) => {
+      setRemoteCursors(prev => ({ ...prev, [userId]: { x, y, userName, color } }));
+    };
+
     socket.on('receive_sync_stroke', handleReceiveSyncStroke);
     socket.on('receive_stroke', handleReceiveStroke);
     socket.on('receive_undo', () => setStrokes(prev => prev.slice(0, -1)));
@@ -257,6 +286,9 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
     socket.on('whiteboard_image_added', handleImageAdded);
     socket.on('whiteboard_image_updated', handleImageUpdated);
     socket.on('whiteboard_image_removed', handleImageRemoved);
+    socket.on('user_typing_update', handleUserTypingUpdate);
+    socket.on('receive_text_content', handleReceiveTextContent);
+    socket.on('cursor_move', handleCursorMove);
 
     return () => {
       socket.off('receive_sync_stroke', handleReceiveSyncStroke);
@@ -267,8 +299,11 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       socket.off('whiteboard_image_added', handleImageAdded);
       socket.off('whiteboard_image_updated', handleImageUpdated);
       socket.off('whiteboard_image_removed', handleImageRemoved);
+      socket.off('user_typing_update', handleUserTypingUpdate);
+      socket.off('receive_text_content', handleReceiveTextContent);
+      socket.off('cursor_move', handleCursorMove);
     };
-  }, [socket, ctx, displayName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, ctx, displayName, activeTextId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
@@ -345,7 +380,9 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
       width: 200,
       height: 36,
       userName: displayName,
-      authorName: localStorage.getItem('bb_user_name') || 'Anonymous'
+      authorName: displayName || localStorage.getItem('bb_user_name') || `User ${myNumber}`,
+      authorColor: myColor,
+      authorId: myUserId
     };
     setRedoStack([]);
     setImages(prev => [...prev, textObj]);
@@ -355,18 +392,27 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
 
   const draw = (e) => {
     e.preventDefault();
+    const coords = getCoordinates(e);
+
+    // Throttle cursor emit
+    const now = Date.now();
+    if (!lastCursorEmitRef.current || now - lastCursorEmitRef.current > 50) {
+      if (socket && socket.connected) {
+        socket.emit('cursor_move', { boardId, x: coords.x, y: coords.y, userName: displayName, color: myColor });
+      }
+      lastCursorEmitRef.current = now;
+    }
+
     if (isDraftingShape && shapeDraftRef.current) {
-      const { x, y } = getCoordinates(e);
       const anchor = shapeDraftRef.current;
-      anchor.w = x - anchor.x;
-      anchor.h = y - anchor.y;
+      anchor.w = coords.x - anchor.x;
+      anchor.h = coords.y - anchor.y;
       drawGhostShape(anchor);
       return;
     }
     if (!isDrawing || !ctx || !currentStrokeRef.current) return;
-    const { x, y } = getCoordinates(e);
     
-    currentStrokeRef.current.points.push({ x, y });
+    currentStrokeRef.current.points.push({ x: coords.x, y: coords.y });
     renderAllStrokes();
 
     if (socket && socket.connected) socket.emit('draw_sync', { boardId, stroke: currentStrokeRef.current });
@@ -475,8 +521,9 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 120px)' }}>
-      <div className="flex items-center justify-between px-4 py-2 border-b overflow-x-auto" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
-        <div className="flex items-center gap-4 shrink-0">
+      {/* ── Toolbar ───────────────────────────────────────────── */}
+      <div className="absolute left-0 right-0 bottom-0 md:left-1/2 md:-translate-x-1/2 md:bottom-6 z-50 glass px-2 md:px-4 py-3 md:rounded-2xl flex items-center md:justify-center overflow-x-auto no-scrollbar shadow-[0_-10px_30px_rgba(0,0,0,0.1)] md:shadow-2xl border-t md:border border-white/10 w-full md:w-auto" style={{ backgroundColor: 'var(--wb-toolbar-bg)', borderColor: 'var(--wb-toolbar-border)' }}>
+        <div className="flex items-center gap-1.5 md:gap-4 mx-auto min-w-max px-2">
           <div className="flex items-center gap-2 mr-2">
             <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-[#1D9E75]' : 'bg-[#ED93B1]'} animate-pulse`} />
             <span className="text-sm font-medium bb-text hidden sm:inline">{connected ? 'Live' : 'Reconnecting…'}</span>
@@ -565,13 +612,21 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
             <button onClick={clearCanvas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ED93B1]/40 text-sm font-medium text-[#ED93B1] hover:bg-[#ED93B1]/10 transition-all">
               <Trash2 size={16} /> Clear
             </button>
+            <div className="w-px h-6 bg-[#C9A84C]/20 mx-1 md:mx-2 hidden sm:block"></div>
+            <button 
+              onClick={() => setGridType(g => g === 'none' ? 'dots' : g === 'dots' ? 'lines' : 'none')}
+              className={`p-1.5 rounded-lg transition-colors hidden sm:block ${gridType !== 'none' ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'text-gray-400 hover:bg-gray-700/30'}`}
+              title="Toggle Grid"
+            >
+              <Grid size={16} />
+            </button>
           </div>
         </div>
       </div>
 
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden bg-[var(--bg)] cursor-crosshair"
+        className={`flex-1 relative overflow-hidden bg-[var(--bg)] cursor-crosshair ${gridType === 'dots' ? 'bg-dot-grid' : gridType === 'lines' ? 'bg-line-grid' : ''}`}
       >
         {/* Activity Feed Overlay */}
         <div className="absolute top-4 left-4 z-40 pointer-events-none flex flex-col gap-2">
@@ -592,6 +647,10 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
               removeText={removeImage}
               activeTextId={activeTextId}
               setActiveTextId={setActiveTextId}
+              socket={socket}
+              myUserId={myUserId}
+              typingUsers={typingUsers}
+              boardId={boardId}
             />
           );
           if (img.type === 'shape') return (
@@ -620,6 +679,11 @@ export default function Whiteboard({ boardId, socket, connected, userCount, disp
             />
           );
         })}
+
+        {/* Render Remote Cursors */}
+        {Object.values(remoteCursors).map((c, i) => (
+          <RemoteCursor key={`cursor-${i}`} x={c.x} y={c.y} color={c.color} userName={c.userName} />
+        ))}
 
         <canvas
           ref={canvasRef}

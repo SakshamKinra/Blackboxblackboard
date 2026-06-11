@@ -91,6 +91,19 @@ io.use((socket, next) => {
 });
 const boardParticipants = new Map();
 const whiteboardParticipants = new Map();
+
+const boardUsers = {}; // { boardId: { socketId: { userId, userName, color, userNumber } } }
+const whiteboardUsers = {}; // { whiteboardId: { socketId: { userId, userName, color, userNumber } } }
+
+const USER_COLORS = [
+  '#C9A84C',  // gold
+  '#ED93B1',  // blush pink
+  '#AFA9EC',  // lavender
+  '#6EC9A8',  // mint
+  '#E8956D',  // coral
+  '#64B5F6',  // sky blue
+];
+
 const socketRateLimits = new Map();
 
 const checkSocketRateLimit = (socketId) => {
@@ -244,8 +257,8 @@ io.on('connection', (socket) => {
   // Called by the frontend after a board is unlocked.
   // The client joins the room so it can send/receive updates.
   //
-  // Payload: { userName: string }
-  socket.on('join_board', async ({ userName }) => {
+  // Payload: { userName: string, userId: string }
+  socket.on('join_board', async ({ userName, userId }) => {
     const boardId = socket.data.boardId;
     if (!boardId) return;
     const normalizedName = normalizeName(userName);
@@ -260,10 +273,18 @@ io.on('connection', (socket) => {
     upsertParticipant(boardParticipants, boardId, socket.id, normalizedName);
     // console.log(`[Socket.io] Socket ${socket.id} joined room: ${boardId}`);
 
+    if (!boardUsers[boardId]) boardUsers[boardId] = {};
+    const existingCount = Object.keys(boardUsers[boardId]).length;
+    const color = USER_COLORS[existingCount % USER_COLORS.length];
+    const userNumber = existingCount + 1;
+    const assignedUserId = userId || socket.id;
+    boardUsers[boardId][socket.id] = { userId: assignedUserId, userName: normalizedName, color, userNumber };
+
     // Acknowledge the join to the connecting client only.
-    socket.emit('joined_board', { boardId, message: 'Joined board room' });
+    socket.emit('joined_board', { boardId, message: 'Joined board room', color, userNumber, userId: assignedUserId, userName: normalizedName });
     socket.to(boardId).emit('user_joined', { userName: normalizedName });
     io.to(boardId).emit('room_users', { users: participantsList(boardParticipants, boardId) });
+    io.to(boardId).emit('user_list', { users: Object.values(boardUsers[boardId]) });
 
     try {
       // Send existing whiteboard data to the newly joined user
@@ -426,7 +447,7 @@ io.on('connection', (socket) => {
   // ==========================================================
   const Whiteboard = require('./models/Whiteboard');
 
-  socket.on('join_whiteboard', async ({ userName }) => {
+  socket.on('join_whiteboard', async ({ userName, userId }) => {
     const whiteboardId = socket.data.whiteboardId;
     if (!whiteboardId) return;
     const normalizedName = normalizeName(userName);
@@ -439,9 +460,18 @@ io.on('connection', (socket) => {
     socket.data.whiteboardUserName = normalizedName;
     upsertParticipant(whiteboardParticipants, whiteboardId, socket.id, normalizedName);
     // console.log(`[Socket.io] Socket ${socket.id} joined standalone whiteboard: ${whiteboardId}`);
-    socket.emit('joined_whiteboard', { whiteboardId });
+    
+    if (!whiteboardUsers[whiteboardId]) whiteboardUsers[whiteboardId] = {};
+    const existingCount = Object.keys(whiteboardUsers[whiteboardId]).length;
+    const color = USER_COLORS[existingCount % USER_COLORS.length];
+    const userNumber = existingCount + 1;
+    const assignedUserId = userId || socket.id;
+    whiteboardUsers[whiteboardId][socket.id] = { userId: assignedUserId, userName: normalizedName, color, userNumber };
+
+    socket.emit('joined_whiteboard', { whiteboardId, color, userNumber, userId: assignedUserId, userName: normalizedName });
     socket.to(whiteboardId).emit('wb_user_joined', { userName: normalizedName });
     io.to(whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, whiteboardId) });
+    io.to(whiteboardId).emit('user_list', { users: Object.values(whiteboardUsers[whiteboardId]) });
   });
 
   socket.on('wb_draw_sync', ({ stroke }) => {
@@ -562,6 +592,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Antigravity Relays ─────────────────────────────────────
+  socket.on('user_typing', ({ userId, textBoxId, isTyping }) => {
+    const boardId = socket.data.boardId || socket.data.whiteboardId;
+    if (!boardId) return;
+    const usersMap = socket.data.boardId ? boardUsers[boardId] : whiteboardUsers[boardId];
+    const user = usersMap ? usersMap[socket.id] : null;
+    socket.to(boardId).emit('user_typing_update', {
+      userId, textBoxId, isTyping,
+      userName: user?.userName || socket.data.boardUserName || socket.data.whiteboardUserName,
+      color: user?.color,
+    });
+  });
+
+  socket.on('text_content_update', ({ objectId, content }) => {
+    const boardId = socket.data.boardId || socket.data.whiteboardId;
+    if (!boardId) return;
+    socket.to(boardId).emit('receive_text_content', { objectId, content });
+  });
+
+  socket.on('cursor_move', ({ userId, userName, color, x, y }) => {
+    const boardId = socket.data.boardId || socket.data.whiteboardId;
+    if (!boardId) return;
+    socket.to(boardId).emit('receive_cursor', { userId, userName, color, x, y });
+  });
+
   // ── Event: disconnect ─────────────────────────────────────
   // Fires automatically when a client closes the connection.
   // Socket.io removes the socket from all rooms automatically.
@@ -569,13 +624,23 @@ io.on('connection', (socket) => {
     socketRateLimits.delete(socket.id);
     const leftBoardName = removeParticipant(boardParticipants, socket.data.boardId, socket.id);
     if (socket.data.boardId && leftBoardName) {
-      socket.to(socket.data.boardId).emit('user_left', { userName: leftBoardName });
+      socket.to(socket.data.boardId).emit('user_left', { userName: leftBoardName, socketId: socket.id });
       io.to(socket.data.boardId).emit('room_users', { users: participantsList(boardParticipants, socket.data.boardId) });
+
+      if (boardUsers[socket.data.boardId] && boardUsers[socket.data.boardId][socket.id]) {
+        delete boardUsers[socket.data.boardId][socket.id];
+        io.to(socket.data.boardId).emit('user_list', { users: Object.values(boardUsers[socket.data.boardId]) });
+      }
     }
     const leftWbName = removeParticipant(whiteboardParticipants, socket.data.whiteboardId, socket.id);
     if (socket.data.whiteboardId && leftWbName) {
-      socket.to(socket.data.whiteboardId).emit('wb_user_left', { userName: leftWbName });
+      socket.to(socket.data.whiteboardId).emit('wb_user_left', { userName: leftWbName, socketId: socket.id });
       io.to(socket.data.whiteboardId).emit('wb_room_users', { users: participantsList(whiteboardParticipants, socket.data.whiteboardId) });
+
+      if (whiteboardUsers[socket.data.whiteboardId] && whiteboardUsers[socket.data.whiteboardId][socket.id]) {
+        delete whiteboardUsers[socket.data.whiteboardId][socket.id];
+        io.to(socket.data.whiteboardId).emit('user_list', { users: Object.values(whiteboardUsers[socket.data.whiteboardId]) });
+      }
     }
     // console.log(`[Socket.io] Client disconnected: ${socket.id}`);
   });

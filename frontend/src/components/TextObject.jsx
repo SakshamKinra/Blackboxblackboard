@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Move, Trash2, Edit2 } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { AttributionLabel } from './whiteboard/AttributionLabel';
 
 // ─── Caret helpers ────────────────────────────────────────────────────────────
 const saveCaretPosition = (element) => {
@@ -44,7 +45,7 @@ const restoreCaretPosition = (element, position) => {
 };
 // ──────────────────────────────────────────────────────────────────────────────
 
-export default function TextObject({ textObj, updateText, removeText, activeTextId, setActiveTextId }) {
+export default function TextObject({ textObj, updateText, removeText, activeTextId, setActiveTextId, socket, myUserId, typingUsers, boardId }) {
   const [isHovered, setIsHovered] = useState(false);
   const wrapperRef = useRef(null);
   const contentRef = useRef(null);
@@ -52,6 +53,7 @@ export default function TextObject({ textObj, updateText, removeText, activeText
   const lastEmitRef = useRef(0);
   const THROTTLE_MS = 500;
   const dragRef = useRef(null);
+  const typingTimerRef = useRef(null);
 
   const isActive = activeTextId === textObj.id;
   const setIsActive = (val) => {
@@ -106,18 +108,28 @@ export default function TextObject({ textObj, updateText, removeText, activeText
           return;
         }
         setIsActive(false);
+        if (socket && socket.connected) {
+          socket.emit('user_typing', { userId: myUserId, textBoxId: textObj.id, isTyping: false });
+        }
+        clearTimeout(typingTimerRef.current);
         if (contentRef.current) {
           contentRef.current.style.height = 'auto';
           const newHeight = contentRef.current.scrollHeight;
           const cleanHTML = DOMPurify.sanitize(contentRef.current.innerHTML);
           updateText(textObj.id, { content: cleanHTML, height: newHeight }, true);
+          if (socket && socket.connected) {
+             socket.emit('text_content_update', { objectId: textObj.id, content: cleanHTML, boardId });
+          }
           contentRef.current.blur();
         }
       }
     };
     if (isActive) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isActive, textObj.id, updateText]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      clearTimeout(typingTimerRef.current);
+    };
+  }, [isActive, textObj.id, updateText, socket, myUserId, boardId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const animationFrameRef = useRef(null);
   const MIN_WIDTH = 120;
@@ -337,6 +349,17 @@ export default function TextObject({ textObj, updateText, removeText, activeText
   const handleInput = () => {
     if (!contentRef.current) return;
 
+    if (socket && socket.connected) {
+      socket.emit('user_typing', { userId: myUserId, textBoxId: textObj.id, isTyping: true });
+    }
+
+    clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      if (socket && socket.connected) {
+        socket.emit('user_typing', { userId: myUserId, textBoxId: textObj.id, isTyping: false });
+      }
+    }, 2000);
+
     // Save caret BEFORE any DOM measurement (scrollHeight read is safe, but guard anyway)
     const caretPos = saveCaretPosition(contentRef.current);
 
@@ -350,6 +373,9 @@ export default function TextObject({ textObj, updateText, removeText, activeText
     const now = Date.now();
     if (now - lastEmitRef.current > THROTTLE_MS) {
       updateText(textObj.id, { content, height: newHeight }, false);
+      if (socket && socket.connected) {
+        socket.emit('text_content_update', { objectId: textObj.id, content, boardId });
+      }
       lastEmitRef.current = now;
     } else {
       // Always persist height so border grows immediately
@@ -380,26 +406,12 @@ export default function TextObject({ textObj, updateText, removeText, activeText
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Author Name Label */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '-20px',
-          left: 0,
-          fontSize: '10px',
-          fontWeight: 600,
-          fontFamily: 'Inter, sans-serif',
-          background: '#ED93B1',
-          color: '#0d0d1a',
-          padding: '2px 6px',
-          borderRadius: '4px',
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-          zIndex: 50,
-        }}
-      >
-        {textObj.authorName || 'Anonymous'}
-      </div>
+      {/* Attribution Label */}
+      <AttributionLabel
+        userName={textObj.authorName || 'Anonymous'}
+        color={textObj.authorColor || '#C9A84C'}
+        isTyping={typingUsers && typingUsers[textObj.id] !== undefined}
+      />
 
       {/*
         ⚠️  NO dangerouslySetInnerHTML here — content is seeded once on mount
