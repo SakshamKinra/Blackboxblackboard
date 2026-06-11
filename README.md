@@ -10,9 +10,8 @@
 ![Demo](./assets/demo.gif)
 
 ## 📸 Screenshots
-*(Add screenshots here showing different features like the main board, sticky notes, etc.)*
-- `![Main Board](./assets/screenshot-main.png)`
-- `![Sticky Notes](./assets/screenshot-notes.png)`
+*<img width="1887" height="626" alt="Screenshot 2026-05-15 054144" src="https://github.com/user-attachments/assets/9a2e25af-015e-46a4-bd07-4d042dd7ae12" />
+
 
 ## ✨ Features
 - **Multi-User Collaboration**: Work together with teammates on the same board simultaneously.
@@ -22,9 +21,6 @@
 - **Undo/Redo**: Fully functional state history for robust error recovery.
 - **User Attribution**: See who is currently typing or editing an element.
 
-## 🚀 Live Demo
-*(Add your live deployed demo link here)*
-[Check out the Live Demo here!](#)
 
 ## 🛠 Tech Stack
 - **Frontend**: React, Canvas API, CSS3
@@ -109,6 +105,3 @@ FRONTEND_URL=http://localhost:5173
 # JWT Secret (if applicable for auth)
 JWT_SECRET=your_super_secret_string
 ```
-
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
